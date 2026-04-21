@@ -55,7 +55,9 @@ pages_json=$("$SCRIPT_DIR/cf-pages.sh" --json)
 # the (count) suffix in every markdown section heading so the jq filter
 # literal lives in one place (ref: SonarCloud rule S1192).
 result_count() {
-  printf '%s' "$1" | jq -r '.result | length'
+  local json="$1"
+  printf '%s' "$json" | jq -r '.result | length'
+  return $?
 }
 
 if [[ "$mode" == "json" ]]; then
