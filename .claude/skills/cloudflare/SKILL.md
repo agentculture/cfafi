@@ -3,12 +3,13 @@ name: cloudflare
 description: >
   Read-only visibility into CloudFlare state for the AgentCulture
   organization: zones, DNS records, Workers scripts and routes, Pages
-  projects and deployments. Use when: checking CloudFlare state,
-  verifying DNS, inventorying Pages or Workers deployments, auditing
-  before a cleanup, or the user says "check cloudflare", "list
-  zones", "dns records", "pages deployments", "workers scripts",
-  "workers routes", "cf-whoami", "inventory agentirc", "verify the
-  cloudflare token".
+  projects and deployments, plus a single-shot status digest. Use
+  when: checking CloudFlare state, verifying DNS, inventorying Pages
+  or Workers deployments, auditing before a cleanup, or the user says
+  "cloudflare status", "cf-status", "check cloudflare", "list zones",
+  "dns records", "pages deployments", "workers scripts", "workers
+  routes", "cf-whoami", "inventory agentirc", "verify the cloudflare
+  token".
 ---
 
 # cloudflare
@@ -32,10 +33,12 @@ bash .claude/skills/cloudflare/scripts/cf-whoami.sh
 
 Expected output: a `**CloudFlare token**` section with the token id,
 `status: active`, `not_before`, and `expires_on`. If you see
-`CLOUDFLARE_API_TOKEN not set`, copy `.env.example` → `.env` and paste
-the token (see repo README for scope list). `cf-whoami` does NOT list
-the token's granted scopes — `/user/tokens/verify` doesn't return
-them; consult the dashboard for scopes if needed.
+`CLOUDFLARE_API_TOKEN not set`, or if later scripts return
+`code 10000 Authentication error`, see `docs/SETUP.md` for the full
+token-creation walkthrough, the scope-to-script mapping, and common
+errors. `cf-whoami` does NOT list the token's granted scopes —
+`/user/tokens/verify` doesn't return them; consult the dashboard for
+scopes if needed.
 
 ## 2. Read recipes
 
@@ -43,6 +46,7 @@ Question → script:
 
 | Question | Script |
 |---|---|
+| Give me everything in one shot | `bash .claude/skills/cloudflare/scripts/cf-status.sh` |
 | What zones does the token see? | `bash .claude/skills/cloudflare/scripts/cf-zones.sh` |
 | What DNS records exist on `<zone>`? | `bash .claude/skills/cloudflare/scripts/cf-dns.sh <zone>` |
 | What Workers scripts are deployed? | `bash .claude/skills/cloudflare/scripts/cf-workers.sh` |
@@ -51,8 +55,15 @@ Question → script:
 | What deployments does `<project>` have? | `bash .claude/skills/cloudflare/scripts/cf-pages.sh <project>` |
 
 Every script accepts `--json` to emit the raw CloudFlare response
-envelope (for Workers routes, a synthetic envelope — the script
-aggregates across per-zone calls).
+envelope (for Workers routes and `cf-status`, a synthetic envelope —
+those scripts aggregate across multiple calls).
+
+**Prefer `cf-status.sh` for "what's the state?" questions.** It runs
+every other read script in `--json` mode and composes one digest, so
+you get token + zones + Workers scripts + Workers routes + Pages
+projects in a single command (and therefore a single tool call) — no
+need to run five scripts, read each block, and stitch the summary
+together by hand.
 
 ## 3. Targeting culture.dev
 
@@ -117,6 +128,9 @@ Pagination: handled transparently for every list endpoint via
 one `.result` array; override the per-page size by exporting
 `CF_PAGE_SIZE` in the environment of any script invocation, e.g.
 `CF_PAGE_SIZE=25 bash .claude/skills/cloudflare/scripts/cf-zones.sh`.
+The default is 50. `cf-pages.sh` pins it to 10 internally because the
+CloudFlare Pages list endpoint rejects `per_page >= 11` with
+`code 8000024`; a user-supplied `CF_PAGE_SIZE` still wins if set.
 
 ## 6. What this skill does NOT do (yet)
 

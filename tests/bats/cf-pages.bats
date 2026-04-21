@@ -100,3 +100,27 @@ setup() {
   # Slash must be encoded as %2F so it stays in the project segment
   cf_assert_called "/pages/projects/has%2Fslash/deployments"
 }
+
+# --- pagination (Pages API caps per_page at 10) ---
+
+@test "cf-pages.sh list pins per_page=10 so CloudFlare Pages does not reject the request" {
+  cf_mock "/pages/projects" "pages_projects.json"
+  run bash "$SKILL_SCRIPTS/cf-pages.sh"
+  [ "$status" -eq 0 ]
+  cf_assert_called "per_page=10"
+}
+
+@test "cf-pages.sh PROJECT pins per_page=10 for deployments too" {
+  cf_mock "/pages/projects/agentirc-dev/deployments" "pages_deployments.json"
+  cf_mock "/pages/projects" "pages_projects.json"
+  run bash "$SKILL_SCRIPTS/cf-pages.sh" agentirc-dev
+  [ "$status" -eq 0 ]
+  cf_assert_called "/pages/projects/agentirc-dev/deployments?per_page=10"
+}
+
+@test "cf-pages.sh respects caller-supplied CF_PAGE_SIZE override" {
+  cf_mock "/pages/projects" "pages_projects.json"
+  CF_PAGE_SIZE=5 run bash "$SKILL_SCRIPTS/cf-pages.sh"
+  [ "$status" -eq 0 ]
+  cf_assert_called "per_page=5"
+}

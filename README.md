@@ -4,9 +4,14 @@ CloudFlare management for the [AgentCulture OSS](https://culture.dev) organizati
 
 ## Setup
 
+Short version:
+
 1. Copy the env template: `cp .env.example .env`
 2. Provision a CloudFlare API token with the read-only scopes listed in `.env.example`, scoped to the AgentCulture account. Paste the token and your account ID into `.env`.
 3. Verify: `bash .claude/skills/cloudflare/scripts/cf-whoami.sh` — should print a **CloudFlare token** section with the token id, `status: active`, `not_before`, and `expires_on`. (The `/user/tokens/verify` endpoint does not return granted scopes, so those are not printed.)
+4. Full digest: `bash .claude/skills/cloudflare/scripts/cf-status.sh` — if this succeeds, all scopes are wired correctly.
+
+Long version (dashboard walkthrough, scope-to-script mapping, common errors): see [`docs/SETUP.md`](docs/SETUP.md).
 
 `.env` is gitignored. Do not commit it.
 
