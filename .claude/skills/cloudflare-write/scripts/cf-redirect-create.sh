@@ -74,8 +74,21 @@ for h in "$from_host" "$to_host"; do
   fi
 done
 
-if ! [[ "$status" =~ ^[0-9]+$ ]] || (( status < 300 || status > 399 )); then
+if ! [[ "$status" =~ ^[0-9]+$ ]] || (( 10#$status < 300 || 10#$status > 399 )); then
   echo "ERROR: --status must be a 3xx HTTP code, got: $status" >&2
+  exit 2
+fi
+# Normalize leading zeros (e.g. "0302" → 302) so jq --argjson below
+# never sees a JSON-invalid leading-zero number.
+status=$((10#$status))
+
+# --www blindly prepends "www." to FROM_HOST, so passing
+# www.example.com with --www would produce www.www.example.com in the
+# wirefilter expression. Reject instead of silently stripping — a
+# loud error is easier to debug than a subtly-wrong redirect rule.
+if (( www )) && [[ "$from_host" == www.* ]]; then
+  echo "ERROR: --www cannot be combined with a FROM_HOST that already starts with 'www.'" >&2
+  echo "       drop the 'www.' prefix from FROM_HOST (the --www flag adds it for you)" >&2
   exit 2
 fi
 
@@ -85,8 +98,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 # Resolve FROM_HOST to a zone ID. cf_api_paginated handles every page
 # automatically; the zone list is small in practice but stay honest.
 zones_json=$(cf_api_paginated /zones)
+# Use `.[0]` inside jq rather than `jq | head -n 1`. Under pipefail,
+# head closing the pipe after one line can send SIGPIPE to jq and make
+# the whole pipeline exit non-zero even though the match succeeded.
+# shellcheck disable=SC2016  # single-quoted jq filter
 zone_id=$(printf '%s' "$zones_json" | jq -r --arg name "$from_host" \
-  '.result[] | select(.name == $name) | .id' | head -n 1)
+  '[.result[] | select(.name == $name) | .id] | .[0] // ""')
 
 if [[ -z "$zone_id" ]]; then
   echo "ERROR: zone $from_host not found in this account" >&2
@@ -97,12 +114,15 @@ fi
 # One zone can have at most one ruleset per phase, so POST would fail
 # with a CF error anyway — we want a friendlier message instead.
 rulesets_json=$(cf_api_paginated "/zones/$zone_id/rulesets")
+# shellcheck disable=SC2016  # single-quoted jq filter
 existing_redirect_id=$(printf '%s' "$rulesets_json" | jq -r '
-  .result[]
-  | select(.phase == "http_request_dynamic_redirect")
-  | select(.kind == "zone")
-  | .id
-' | head -n 1)
+  [
+    .result[]
+    | select(.phase == "http_request_dynamic_redirect")
+    | select(.kind == "zone")
+    | .id
+  ] | .[0] // ""
+')
 
 if [[ -n "$existing_redirect_id" ]]; then
   echo "ERROR: redirect ruleset already exists on zone $from_host (id=$existing_redirect_id)" >&2

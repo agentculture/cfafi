@@ -71,7 +71,7 @@ Every write script in this skill follows the same shape:
 
 | Question → action | Script |
 |---|---|
-| Create a Single Redirect for a zone | `bash .claude/skills/cloudflare-write/scripts/cf-redirect-create.sh FROM_HOST TO_HOST [--www] [--status 301] [--apply] [--json]` |
+| Create a Single Redirect for a zone | `bash .claude/skills/cloudflare-write/scripts/cf-redirect-create.sh FROM_HOST TO_HOST [--www] [--status=301] [--apply] [--json]` |
 
 ### cf-redirect-create.sh
 
@@ -95,8 +95,9 @@ Flags:
 
 - `--www` — match both `FROM_HOST` and `www.FROM_HOST`. Use when the
   zone has both apex and `www.` DNS records.
-- `--status N` — HTTP status code for the redirect. Defaults to `301`
-  (permanent, SEO-safe). `302` for testing.
+- `--status=N` — HTTP status code for the redirect. Defaults to `301`
+  (permanent, SEO-safe). `--status=302` for testing. The `=` is
+  required; `--status 302` (space-separated) is **not** accepted.
 - `--apply` — actually POST. Without this, the script is a dry-run.
 - `--json` — emit the raw CloudFlare response envelope instead of
   markdown. Works in both dry-run (simulated body) and `--apply`

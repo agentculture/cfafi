@@ -156,6 +156,34 @@ _assert_no_post() {
   [[ "$output" == *"3xx HTTP code"* ]]
 }
 
+@test "cf-redirect-create.sh accepts --status with leading zeros and normalizes to a JSON-valid int" {
+  cf_mock "/zones?per_page"     "zones_with_agentculture.json"
+  cf_mock "/rulesets?per_page"  "rulesets_empty.json"
+  run bash "$WRITE_SCRIPTS/cf-redirect-create.sh" agentculture.org culture.dev --status=0302
+  [ "$status" -eq 0 ]
+  # Body must contain the normalized integer, NOT the leading-zero form.
+  [[ "$output" == *'"status_code": 302'* ]]
+  [[ "$output" != *'"status_code": 0302'* ]]
+  [[ "$output" == *"**status:** 302"* ]]
+}
+
+@test "cf-redirect-create.sh exits 2 when --www is combined with a FROM_HOST starting with 'www.'" {
+  run bash "$WRITE_SCRIPTS/cf-redirect-create.sh" www.agentculture.org culture.dev --www
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--www cannot be combined"* ]]
+  [[ "$output" == *"drop the 'www.' prefix"* ]]
+}
+
+@test "cf-redirect-create.sh accepts FROM_HOST starting with 'www.' WITHOUT --www" {
+  # Mocks won't match this hostname (not in zones fixture) but we're only
+  # verifying the pre-validation passes; the zone lookup will fail after
+  # that with exit 1, which is the expected downstream behaviour.
+  cf_mock "/zones?per_page"  "zones_with_agentculture.json"
+  run bash "$WRITE_SCRIPTS/cf-redirect-create.sh" www.agentculture.org culture.dev
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"zone www.agentculture.org not found"* ]]
+}
+
 # --- zone lookup uses pagination ---
 
 @test "cf-redirect-create.sh resolves FROM_HOST via paginated /zones" {
