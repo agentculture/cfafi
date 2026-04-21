@@ -42,6 +42,12 @@ done
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 cf_require_account_id
 
+# CloudFlare Pages list endpoints cap per_page at 10 — requests with
+# per_page >= 11 return code 8000024 "Invalid list options provided".
+# Every other list endpoint we call accepts the library default of 50,
+# so this override is Pages-local. Respect a user-supplied CF_PAGE_SIZE.
+export CF_PAGE_SIZE="${CF_PAGE_SIZE:-10}"
+
 if [[ -z "$project" ]]; then
   response=$(cf_api_paginated "/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects")
 
