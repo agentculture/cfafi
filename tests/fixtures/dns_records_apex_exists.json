@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "id": "existing-dns-record-id-aaaa",
+      "type": "A",
+      "name": "agentculture.org",
+      "content": "192.0.2.1",
+      "proxied": true,
+      "ttl": 1,
+      "zone_id": "zone-id-agentculture-org-aaaaaaaaaaaaaaaa",
+      "zone_name": "agentculture.org",
+      "created_on": "2026-04-20T10:00:00.000000Z",
+      "modified_on": "2026-04-20T10:00:00.000000Z",
+      "comment": "manually created earlier"
+    }
+  ],
+  "result_info": {"page": 1, "per_page": 20, "total_pages": 1, "count": 1, "total_count": 1}
+}
