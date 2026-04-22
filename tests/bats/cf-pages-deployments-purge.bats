@@ -391,6 +391,32 @@ JSON
   [ "$output" = "2" ]
 }
 
+@test "purge apply always sends ?force=true on EVERY DELETE (guards against issue #1 follow-up)" {
+  # CF Pages marks both the canonical deployment AND every per-branch
+  # preview deployment (aliases like `<branch>.<project>.pages.dev`)
+  # as aliased. A force-free DELETE on any of them returns CF code
+  # 8000035. The manifest-tick gate is the real consent layer, so the
+  # script unconditionally forces — this test stops a regression that
+  # would silently halt a purge partway through (which happened live
+  # on `agentirc-dev` with 41 aliased deployments in the 137-row set).
+  cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
+  cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
+  local manifest
+  manifest=$(_plan_and_sign)
+  cf_mock "/pages/projects/agentirc-dev/deployments/bbbbbbbb" "pages_deployment_delete_ok.json"
+  cf_mock "/pages/projects/agentirc-dev/deployments/ffffffff" "pages_deployment_delete_ok.json"
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
+  [ "$status" -eq 0 ]
+  # Every DELETE URL in the log ends with `?force=true`. grep for any
+  # DELETE that does NOT have it → expect zero.
+  run grep -F -- '-X	DELETE' "$BATS_TEST_TMPDIR/curl.log"
+  local total_deletes="$output"
+  run grep -F -- '?force=true' "$BATS_TEST_TMPDIR/curl.log"
+  local forced_deletes="$output"
+  [ -n "$total_deletes" ]
+  [ "$(echo "$total_deletes" | wc -l)" = "$(echo "$forced_deletes" | wc -l)" ]
+}
+
 @test "purge apply deletes ONLY the ticked subset, leaves others untouched" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
