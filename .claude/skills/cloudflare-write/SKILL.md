@@ -193,28 +193,32 @@ script exits `1` with a refusal message. Override with
 `--force-canonical`, which maps to `?force=true` on the CF DELETE
 endpoint.
 
-### 3.4 cf-pages-deployments-purge.sh (signed-manifest workflow)
+### 3.4 cf-pages-deployments-purge.sh (tick + sign manifest workflow)
 
-Bulk-deletes every non-canonical deployment in a Pages project. This
-is the script to reach for when a project has accumulated hundreds of
-historical deployments (issue #1: `agentirc-dev` had 138).
+Bulk-deletes Pages deployments in a project. Reach for this when a
+project has accumulated hundreds of historical deployments
+(issue #1: `agentirc-dev` had 138).
 
-Because "delete all of them" is one typo away from an outage, this
-script has a **three-phase signed-manifest workflow** that no other
-write script in this skill uses:
+"Delete all of them" is one typo from an outage, so the apply path is
+gated by a **three-phase manifest workflow** nothing else in this
+skill uses:
 
-1. **Plan** — the default invocation with no `--apply` writes a
-   manifest file to `./.cf-purge-manifests/<ts>-<project>.md` listing
-   every deployment it would delete, plus a SHA-256 of the id list.
-   No API mutations happen. The manifest directory is gitignored at
-   the repo root.
+1. **Plan** — the default invocation (no `--apply`) writes a manifest
+   file to `./.cf-purge-manifests/<ts>-<project>.md` listing every
+   deployment it *could* delete. Each row is a GFM task-list item
+   starting `- [ ]`; at the bottom sits a **canary** row whose random
+   22-char alnum string also lives in the `canary:` header. No API
+   mutations happen. The manifest directory is gitignored at the repo
+   root.
 
    ```sh
    bash .claude/skills/cloudflare-write/scripts/cf-pages-deployments-purge.sh agentirc-dev
    ```
 
-2. **Sign** — a human or peer agent opens the manifest, **reads the
-   deployment table**, and appends exactly one line at the bottom:
+2. **Tick + sign** — open the manifest, read each row, and change
+   `- [ ]` to `- [x]` for every deployment you actually want deleted.
+   **Leave the canary row under `## Canary` untouched.** Then append
+   exactly one signature line at the bottom:
 
    ```text
    SIGNED: <your-name-or-agent-id> <ISO-8601-UTC-timestamp>
@@ -225,11 +229,18 @@ write script in this skill uses:
 
 3. **Apply** — re-run the script with `--manifest <path> --apply`.
    Before any DELETE fires, the script:
-   - validates the v1 header, `ids_sha256`, project + account match,
+   - validates the v2 header, `canary:` field, `ids_sha256`, and
+     project + account match,
    - validates the `SIGNED:` line (exactly one, well-formed, fresh),
+   - verifies the canary row is present exactly once, its string
+     matches the header, and its checkbox is untouched (the
+     "sed-replace all `[ ]` with `[x]`" shortcut ticks the canary too
+     and aborts the whole apply),
+   - refuses if **no deployment boxes are ticked** — that implies the
+     operator forgot step 2, not that they want a no-op,
    - **re-fetches live state** and rejects on drift (any new
      non-canonical deployment added since signing), and
-   - skips any ids that are already gone (idempotent re-runs).
+   - skips any ticked ids that are already gone (idempotent re-runs).
 
    ```sh
    bash .claude/skills/cloudflare-write/scripts/cf-pages-deployments-purge.sh \
@@ -263,16 +274,30 @@ completed with zero failures; `1` API error / manifest validation
 failure / signature invalid / drift detected / any failed DELETE;
 `2` usage error.
 
-**Why a manifest instead of a `--yes` flag?** Four reasons:
+**Why tick + canary on top of signing?** The signed-manifest layer
+answers "is this approval fresh and matching live state?"; the
+tick + canary layer answers "which items did the operator *actually*
+pick, and did they review each one?"
 
-1. Forces the operator to **read the concrete list** of ids before
-   approving, rather than acknowledging a count.
-2. **Time-boxed** — a 60-minute-old manifest is rejected, so a stale
-   signature can't be replayed days later.
-3. **Drift-aware** — catches new deployments that appeared between
-   planning and applying (e.g., a CI build mid-signature).
-4. **Reviewable artifact** — pairs nicely with a peer-review model
-   where one agent plans and a different agent signs.
+1. Forces the operator to **mark each deployment individually** —
+   the approval granularity is per row, not per manifest.
+2. The canary is **randomly generated at plan time** and its string
+   must match both the header and the list row, so a "tick the
+   entire manifest" shortcut (regex-replace or a distracted
+   `sed -i`) also ticks the canary, which aborts apply with zero
+   DELETEs. Per-line review is enforced, not just expected.
+3. **Reviewable artifact** — the manifest is a concrete diff a peer
+   can read and challenge before signing; pairs with
+   one-agent-plans-another-agent-signs.
+4. **Time-boxed** — a 60-minute-old signature is rejected, so stale
+   approvals can't be replayed days later.
+5. **Drift-aware** — a new non-canonical deployment appearing
+   between plan and apply causes a hard reject, not a silent skip.
+
+This pattern (per-line tick + canary) is the **repo-wide convention
+for any future bulk-destructive script**, not just this one. New
+`cf-*-delete.sh` / `cf-*-purge.sh` scripts should follow the same
+manifest shape.
 
 ## 4. Output modes
 

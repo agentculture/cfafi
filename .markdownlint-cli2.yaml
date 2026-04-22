@@ -13,3 +13,8 @@ ignores:
   - "node_modules/**"
   - ".local/**"
   - ".git/**"
+  # cf-purge-manifests/ is operational scratch: manifests are machine-
+  # generated (GFM task-list format) and never committed. Without this
+  # ignore, a stale manifest on disk breaks local `bash tests/markdownlint.sh`
+  # runs even though CI never sees the file (it's gitignored).
+  - ".cf-purge-manifests/**"
