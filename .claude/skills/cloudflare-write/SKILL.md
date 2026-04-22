@@ -36,8 +36,13 @@ PUT / DELETE with it will fail with `code 10000 Authentication error`.
 Provision a second token (see `docs/SETUP.md` §1.5 **Write-ops
 token**) with these *additional* scopes on top of the read scopes:
 
-- **Zone · Dynamic Redirect · Edit** (All zones from AgentCulture) —
-  required by `cf-redirect-create.sh`
+- **Zone · Single Redirect · Edit** (All zones from AgentCulture) —
+  required by `cf-redirect-create.sh`. (The CloudFlare Rulesets API
+  still uses `http_request_dynamic_redirect` as the phase
+  identifier, but the dashboard's token-scope label is "Single
+  Redirect".)
+- **Zone · DNS · Edit** (All zones from AgentCulture) —
+  required by `cf-dns-create.sh`
 
 Swap the token into `.env` when you're about to run a write script,
 then swap back. One token at a time.
@@ -72,6 +77,7 @@ Every write script in this skill follows the same shape:
 | Question → action | Script |
 |---|---|
 | Create a Single Redirect for a zone | `bash .claude/skills/cloudflare-write/scripts/cf-redirect-create.sh FROM_HOST TO_HOST [--www] [--status=301] [--apply] [--json]` |
+| Create a DNS record in a zone | `bash .claude/skills/cloudflare-write/scripts/cf-dns-create.sh ZONE TYPE NAME CONTENT [--proxied] [--ttl=N] [--comment=STR] [--apply] [--json]` |
 
 ### cf-redirect-create.sh
 
@@ -118,8 +124,47 @@ bash .claude/skills/cloudflare/scripts/cf-dns.sh agentculture.org
 ```
 
 If every record is "—" (DNS-only) or the zone has no apex record,
-the redirect won't fire. Fix DNS first — a `cf-dns-create.sh` script
-for that write path is not yet built.
+the redirect won't fire. Use `cf-dns-create.sh` (below) to add the
+apex and `www` records first, then create the redirect.
+
+### cf-dns-create.sh
+
+Creates a DNS record in a zone. Same safety model as
+`cf-redirect-create.sh`: dry-run by default, `--apply` to commit,
+idempotency enforced before the POST.
+
+```sh
+# Canonical setup for a redirect-only zone — apex + www, both proxied.
+# 192.0.2.1 is TEST-NET-1; CF intercepts at the edge before forwarding,
+# so the origin IP is irrelevant for a pure-redirect zone.
+bash .claude/skills/cloudflare-write/scripts/cf-dns-create.sh \
+  agentculture.org A agentculture.org 192.0.2.1 --proxied --apply
+bash .claude/skills/cloudflare-write/scripts/cf-dns-create.sh \
+  agentculture.org A www.agentculture.org 192.0.2.1 --proxied --apply
+```
+
+Flags:
+
+- `--proxied` — orange-cloud the record so CF intercepts HTTP
+  traffic. Required for Single Redirects to fire on the record's
+  hostname.
+- `--ttl=N` — TTL in seconds. Default `1` (automatic). Manual TTLs
+  must be in `60..86400`. Proxied records are forced to `1` by CF;
+  combining `--proxied` with `--ttl=N` (N≠1) is rejected up-front.
+- `--comment=STR` — free-text note attached to the record (visible
+  in the CF dashboard).
+- `--apply` — actually POST. Without this, the script is a dry-run.
+- `--json` — raw CloudFlare response envelope, same shape as the
+  read skill's `--json` output.
+
+Supported record types: A, AAAA, CNAME, TXT, MX, NS, SRV, CAA.
+Extend the case statement in the script if you need PTR / URI /
+TLSA / etc.
+
+Idempotency key: **type + name + content**. Two A records at the
+same name with different IPs are allowed (CF supports round-robin);
+two records with identical type+name+content are refused as
+duplicates.
 
 ## 4. Output modes
 

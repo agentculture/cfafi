@@ -67,9 +67,10 @@ scope from the Read table above (so `cf-whoami.sh` / `cf-zones.sh`
 still work) **plus** the Edit scopes below. Scope to the AgentCulture
 account and "All zones from an account" exactly like the read token.
 
-| Scope (CloudFlare dashboard label)       | Level | Access | Powers                                                             |
-|------------------------------------------|-------|--------|--------------------------------------------------------------------|
-| **Zone · Dynamic Redirect** (All zones)  | Zone  | Edit   | `cf-redirect-create.sh` — creates the zone-level Single Redirect ruleset |
+| Scope (CloudFlare dashboard label)       | Level | Access | Powers                                                                   |
+|------------------------------------------|-------|--------|--------------------------------------------------------------------------|
+| **Zone · Single Redirect** (All zones)  | Zone  | Edit   | `cf-redirect-create.sh` — creates the zone-level Single Redirect ruleset |
+| **Zone · DNS** (All zones)               | Zone  | Edit   | `cf-dns-create.sh` — creates a DNS record (A / AAAA / CNAME / TXT / MX / …) |
 
 Swap tokens by editing `.env`'s `CLOUDFLARE_API_TOKEN` when you're
 about to run a write script, then swap back. `.env` only stores one
@@ -128,18 +129,23 @@ bash .claude/skills/cloudflare/scripts/cf-status.sh
   token is fully provisioned.
 
 If you also provisioned a write-ops token (§1.5), swap it into `.env`
-and run a dry-run against a real zone to exercise the Edit scope
+and run dry-runs against a real zone to exercise the Edit scopes
 without mutating anything:
 
 ```sh
+# Single Redirect · Edit
 bash .claude/skills/cloudflare-write/scripts/cf-redirect-create.sh \
   agentculture.org culture.dev --www
+
+# DNS · Edit
+bash .claude/skills/cloudflare-write/scripts/cf-dns-create.sh \
+  agentculture.org A agentculture.org 192.0.2.1 --proxied
 ```
 
-This should print a "Dry-run — no changes applied" banner followed
-by the JSON body it would POST. If it instead errors with
-`code 10000`, the token is missing the **Zone · Dynamic Redirect ·
-Edit** scope (or it's scoped to the wrong zones).
+Both should print a "Dry-run — no changes applied" banner followed
+by the JSON body each would POST. If either errors with `code 10000`,
+the token is missing the corresponding Edit scope (or it's scoped to
+the wrong zones).
 
 ## 5. Common errors
 

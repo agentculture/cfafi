@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "id": "new-dns-record-id-bbbb1234",
+    "type": "A",
+    "name": "agentculture.org",
+    "content": "192.0.2.1",
+    "proxied": true,
+    "ttl": 1,
+    "zone_id": "zone-id-agentculture-org-aaaaaaaaaaaaaaaa",
+    "zone_name": "agentculture.org",
+    "created_on": "2026-04-21T23:30:00.000000Z",
+    "modified_on": "2026-04-21T23:30:00.000000Z",
+    "comment": "Managed by cf-dns-create.sh in agentculture/cloudflare"
+  }
+}
