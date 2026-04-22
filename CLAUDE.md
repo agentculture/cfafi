@@ -33,6 +33,7 @@ Layout:
     _lib.sh                          # symlink → ../../cloudflare/scripts/_lib.sh (DRY)
     cf-redirect-create.sh            # create a zone Single Redirect (dry-run default, --apply to commit)
     cf-dns-create.sh                 # create a DNS record in a zone (same safety pattern)
+    cf-pages-project-create.sh       # create a Pages project from a GitHub repo, --clone-from=PROJECT lifts build/deploy config
 .claude/skills/pr-review/            # vendored from ~/.claude/skills — fetch/reply/resolve PR comments
 tests/
   bats/                              # bats-core unit tests; PATH-injected curl stub for offline mocking

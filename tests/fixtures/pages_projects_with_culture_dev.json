@@ -1,0 +1,40 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "name": "culture-dev",
+      "id": "proj-id-culture-dev",
+      "created_on": "2026-04-10T18:30:42.751466Z",
+      "subdomain": "culture-dev.pages.dev",
+      "domains": ["culture-dev.pages.dev", "culture.dev"],
+      "production_branch": "main",
+      "source": {
+        "type": "github",
+        "config": {
+          "owner": "OriNachum",
+          "repo_name": "culture",
+          "production_branch": "main"
+        }
+      }
+    },
+    {
+      "name": "agentirc-dev",
+      "id": "proj-id-agentirc-dev",
+      "created_on": "2025-09-01T08:00:00.000000Z",
+      "subdomain": "agentirc-dev.pages.dev",
+      "domains": ["agentirc.dev"],
+      "production_branch": "main",
+      "source": {
+        "type": "github",
+        "config": {
+          "owner": "agentculture",
+          "repo_name": "agentirc-site",
+          "production_branch": "main"
+        }
+      }
+    }
+  ],
+  "result_info": {"page": 1, "per_page": 20, "total_pages": 1, "count": 2, "total_count": 2}
+}
