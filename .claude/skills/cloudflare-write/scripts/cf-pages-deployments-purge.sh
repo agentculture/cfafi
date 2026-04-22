@@ -154,6 +154,14 @@ ids_sha256() {
   return 0
 }
 
+# Length of a JSON array passed as the first argument. Centralizes
+# the `jq 'length'` idiom used for every count in this script so the
+# literal isn't duplicated four times.
+json_array_length() {
+  printf '%s' "$1" | jq 'length'
+  return 0
+}
+
 # -----------------------------------------------------------------------------
 # PLAN PHASE
 # -----------------------------------------------------------------------------
@@ -179,7 +187,7 @@ if (( apply == 0 )); then
          is_canonical: (.id == $canonical)}
     ] | sort_by(.created_on)
   ')
-  purge_count=$(printf '%s' "$purge_json" | jq 'length')
+  purge_count=$(json_array_length "$purge_json")
 
   if (( purge_count == 0 )); then
     if [[ "$mode" == "json" ]]; then
@@ -454,7 +462,7 @@ drift_json=$(jq -n \
   --argjson manifest "$manifest_ids_json" \
   --arg canonical "$live_canonical" \
   '($live - $manifest) - [$canonical] | map(select(length > 0))')
-drift_count=$(printf '%s' "$drift_json" | jq 'length')
+drift_count=$(json_array_length "$drift_json")
 if (( drift_count > 0 )); then
   echo "ERROR: live project has $drift_count new non-canonical deployment(s) since the manifest was signed:" >&2
   printf '%s\n' "$drift_json" | jq -r '.[] | "  - " + .' >&2
@@ -492,8 +500,8 @@ plan_json=$(printf '%s' "$live_deployments_json" | jq \
        is_canonical: (.id == $canonical)}
   ] | sort_by(.created_on)
 ')
-plan_count=$(printf '%s' "$plan_json" | jq 'length')
-skipped_count=$(printf '%s' "$skipped_json" | jq 'length')
+plan_count=$(json_array_length "$plan_json")
+skipped_count=$(json_array_length "$skipped_json")
 
 # -----------------------------------------------------------------------------
 # Apply-log setup + deletion loop
