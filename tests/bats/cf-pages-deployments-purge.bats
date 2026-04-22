@@ -22,17 +22,49 @@ _assert_no_delete() {
   return 0
 }
 
-# Build a signed manifest by running the plan phase against canned
-# mocks, then appending a SIGNED: line with the current UTC timestamp.
-# Emits the manifest path on stdout so callers can `manifest=$(_plan_and_sign …)`.
+# Tick every deployment task-list row (`- [ ] **<8 hex>** ...`) in a
+# manifest. The canary row has a bare backtick-wrapped alnum string
+# instead of `**short8**`, so it's left untouched.
+_tick_all_non_canary() {
+  sed -i -E 's/^- \[ \] (\*\*[a-f0-9]{8}\*\*)/- [x] \1/' "$1"
+}
+
+# Tick one specific row by its short_id.
+_tick_short() {
+  sed -i -E "s/^- \[ \] (\*\*$2\*\*)/- [x] \1/" "$1"
+}
+
+# Tick the canary row (to exercise the "sed all" shortcut refusal).
+_tick_canary() {
+  sed -i -E 's/^- \[ \] (`[A-Za-z0-9]{22}`)$/- [x] \1/' "$1"
+}
+
+_sign() {
+  printf 'SIGNED: bats %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$1"
+}
+
+# Plan + tick all non-canary + sign. The helper callers from the v1
+# era expected "every deployment in the manifest is approved for
+# deletion" — preserve that behavior by ticking everything non-canary
+# here, so the body of each test still reads the way it did.
 _plan_and_sign() {
   local project="${1:-agentirc-dev}"
   shift || true
   bash "$PURGE_SCRIPT" "$project" --manifest-dir "$MANIFEST_DIR" "$@" >/dev/null
   local manifest
   manifest=$(ls -1 "$MANIFEST_DIR"/*.md | head -n 1)
-  printf 'SIGNED: bats %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$manifest"
+  _tick_all_non_canary "$manifest"
+  _sign "$manifest"
   printf '%s' "$manifest"
+}
+
+# Plan only (no tick, no sign). For tests that need a manifest in a
+# specific intermediate state (e.g. test the "no ticks" refusal).
+_plan_only() {
+  local project="${1:-agentirc-dev}"
+  shift || true
+  bash "$PURGE_SCRIPT" "$project" --manifest-dir "$MANIFEST_DIR" "$@" >/dev/null
+  ls -1 "$MANIFEST_DIR"/*.md | head -n 1
 }
 
 # --- usage errors ---
@@ -68,30 +100,43 @@ _plan_and_sign() {
 
 # --- PLAN phase ---
 
-@test "purge plan writes a manifest with the non-canonical deployments" {
+@test "purge plan writes a v2 manifest with a canary header and canary list row" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest-dir "$MANIFEST_DIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"**Manifest written — sign to apply**"* ]]
+  [[ "$output" == *"**Manifest written — tick + sign to apply**"* ]]
   [[ "$output" == *"**count:** 2"* ]]
   [[ "$output" == *"**canonical_deployment_id:** aaaaaaaa"* ]]
+  [[ "$output" == *"**canary:**"* ]]
   _assert_no_delete
-  # Manifest file exists and has the expected shape.
-  run ls -1 "$MANIFEST_DIR"
-  [ "$status" -eq 0 ]
-  [ -n "$output" ]
+
   local manifest
-  manifest="$MANIFEST_DIR/$output"
-  run grep -c "^- \*\*project:\*\* agentirc-dev$" "$manifest"
+  manifest=$(ls -1 "$MANIFEST_DIR"/*.md | head -n 1)
+  # v2 header present
+  run grep -c '^# cf-purge-manifest v2$' "$manifest"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
-  run grep -c "^| bbbbbbbb | bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb " "$manifest"
+  # Header carries a 22-char alnum canary
+  run grep -cE '^- \*\*canary:\*\* [A-Za-z0-9]{22}$' "$manifest"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
+  # Exactly one deployment line per row, all initially unticked
+  run grep -cE '^- \[ \] \*\*[a-f0-9]{8}\*\* · `[a-f0-9-]{36}`' "$manifest"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2" ]
+  # Canary row present and unticked, backticks wrap a 22-char alnum
+  run grep -cE '^- \[ \] `[A-Za-z0-9]{22}`$' "$manifest"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+  # Canary header value matches canary list-row value
+  local h="" l=""
+  h=$(grep -E '^- \*\*canary:\*\* ' "$manifest" | sed -E 's/^- \*\*canary:\*\* //')
+  l=$(grep -E '^- \[ \] `[A-Za-z0-9]{22}`$' "$manifest" | sed -E 's/^.*`([A-Za-z0-9]{22})`$/\1/')
+  [ "$h" = "$l" ]
 }
 
-@test "purge plan --include-canonical records it in header and includes canonical row" {
+@test "purge plan --include-canonical records it in header and includes canonical task-list row" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest-dir "$MANIFEST_DIR" --include-canonical
@@ -103,13 +148,13 @@ _plan_and_sign() {
   run grep -c "^- \*\*include_canonical:\*\* true$" "$manifest"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
-  # Canonical row flagged in table
-  run grep -c "^| aaaaaaaa | aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa .* | yes |$" "$manifest"
+  # Canonical row is in the task list and carries the CANONICAL marker
+  run grep -cE '^- \[ \] \*\*aaaaaaaa\*\* · `aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa` · .* · CANONICAL$' "$manifest"
   [ "$status" -eq 0 ]
   [ "$output" = "1" ]
 }
 
-@test "purge plan --json emits structured envelope" {
+@test "purge plan --json emits structured envelope with canary field" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest-dir "$MANIFEST_DIR" --json
@@ -118,6 +163,7 @@ _plan_and_sign() {
   echo "$output" | jq -e '.result.dry_run == true'
   echo "$output" | jq -e '.result.count == 2'
   echo "$output" | jq -e '.result.manifest | test("\\.md$")'
+  echo "$output" | jq -e '.result.canary | test("^[A-Za-z0-9]{22}$")'
 }
 
 @test "purge plan exits 0 with 'nothing to delete' when only canonical exists" {
@@ -150,22 +196,31 @@ JSON
   _assert_no_delete
 }
 
-@test "purge apply exits 1 when manifest is missing v1 header" {
+@test "purge apply exits 1 when manifest is missing v2 header" {
   local bad="$BATS_TEST_TMPDIR/bad.md"
   printf 'not a manifest\n' > "$bad"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$bad" --apply
   [ "$status" -eq 1 ]
-  [[ "$output" == *"missing v1 header"* ]]
+  [[ "$output" == *"missing v2 header"* ]]
+  _assert_no_delete
+}
+
+@test "purge apply surfaces v1→v2 hint when handed an old manifest" {
+  local old="$BATS_TEST_TMPDIR/v1.md"
+  printf '# cf-purge-manifest v1\n- **project:** agentirc-dev\n' > "$old"
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$old" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"v1"* ]]
+  [[ "$output" == *"v2"* ]]
   _assert_no_delete
 }
 
 @test "purge apply exits 1 when manifest is unsigned" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
-  # Plan, but don't sign.
-  bash "$PURGE_SCRIPT" agentirc-dev --manifest-dir "$MANIFEST_DIR" >/dev/null
   local manifest
-  manifest=$(ls -1 "$MANIFEST_DIR"/*.md | head -n 1)
+  manifest=$(_plan_only)
+  _tick_all_non_canary "$manifest"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
   [ "$status" -eq 1 ]
   [[ "$output" == *"unsigned"* ]]
@@ -187,10 +242,9 @@ JSON
 @test "purge apply exits 1 when SIGNED timestamp is too old" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
-  bash "$PURGE_SCRIPT" agentirc-dev --manifest-dir "$MANIFEST_DIR" >/dev/null
   local manifest
-  manifest=$(ls -1 "$MANIFEST_DIR"/*.md | head -n 1)
-  # Sign with a very stale timestamp.
+  manifest=$(_plan_only)
+  _tick_all_non_canary "$manifest"
   printf 'SIGNED: bats 2020-01-01T00:00:00Z\n' >> "$manifest"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
   [ "$status" -eq 1 ]
@@ -201,9 +255,9 @@ JSON
 @test "purge apply exits 1 when SIGNED timestamp is far in the future" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
-  bash "$PURGE_SCRIPT" agentirc-dev --manifest-dir "$MANIFEST_DIR" >/dev/null
   local manifest
-  manifest=$(ls -1 "$MANIFEST_DIR"/*.md | head -n 1)
+  manifest=$(_plan_only)
+  _tick_all_non_canary "$manifest"
   printf 'SIGNED: bats 2099-01-01T00:00:00Z\n' >> "$manifest"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
   [ "$status" -eq 1 ]
@@ -223,16 +277,75 @@ JSON
   _assert_no_delete
 }
 
-@test "purge apply exits 1 when ids_sha256 no longer matches the table (tampered)" {
+@test "purge apply exits 1 when ids_sha256 no longer matches the task list (tampered)" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
   local manifest
   manifest=$(_plan_and_sign)
-  # Delete one deployment row — tamper, breaks the SHA.
-  sed -i '/| bbbbbbbb | bbbbbbbb-bbbb/d' "$manifest"
+  # Remove one deployment row — breaks the SHA.
+  sed -i '/bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb/d' "$manifest"
   run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
   [ "$status" -eq 1 ]
   [[ "$output" == *"ids_sha256 mismatch"* ]] || [[ "$output" == *"count"* ]]
+  _assert_no_delete
+}
+
+# --- APPLY phase: canary validation ---
+
+@test "purge apply refuses to proceed when the canary row is ticked" {
+  cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
+  cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
+  local manifest
+  manifest=$(_plan_only)
+  # Simulate the "sed -i 's/[ ]/[x]/g'" shortcut: tick everything,
+  # including the canary row.
+  sed -i -E 's/^- \[ \]/- [x]/' "$manifest"
+  _sign "$manifest"
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Canary is ticked"* ]]
+  _assert_no_delete
+}
+
+@test "purge apply refuses when the canary line's random string is edited" {
+  cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
+  cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
+  local manifest
+  manifest=$(_plan_and_sign)
+  # Replace the canary list row's string (but not the header), breaking
+  # the cross-check. The replacement has to be a valid 22-char alnum so
+  # the row regex still matches — otherwise the "canary line count"
+  # check would fire first with a less informative message.
+  sed -i -E 's/^(- \[ \] )`[A-Za-z0-9]{22}`$/\1`Zzzzzzzzzzzzzzzzzzzzzz`/' "$manifest"
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"canary string on the canary row does not match"* ]]
+  _assert_no_delete
+}
+
+@test "purge apply refuses when the canary row is missing" {
+  cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
+  cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
+  local manifest
+  manifest=$(_plan_and_sign)
+  # Delete the canary list row.
+  sed -i -E '/^- \[ \] `[A-Za-z0-9]{22}`$/d' "$manifest"
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"canary rows"* ]] || [[ "$output" == *"expected exactly 1"* ]]
+  _assert_no_delete
+}
+
+@test "purge apply refuses when no deployment boxes are ticked" {
+  cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
+  cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
+  local manifest
+  manifest=$(_plan_only)
+  # Sign but don't tick anything.
+  _sign "$manifest"
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"No lines are ticked"* ]]
   _assert_no_delete
 }
 
@@ -256,7 +369,7 @@ JSON
 
 # --- APPLY phase: happy path and variants ---
 
-@test "purge apply deletes every non-canonical deployment and writes applied-log" {
+@test "purge apply deletes every ticked deployment and writes applied-log" {
   cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
   cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
   local manifest
@@ -276,6 +389,29 @@ JSON
   [ -f "${manifest}.applied.log" ]
   run grep -c $'\tdeleted\t' "${manifest}.applied.log"
   [ "$output" = "2" ]
+}
+
+@test "purge apply deletes ONLY the ticked subset, leaves others untouched" {
+  cf_mock "/pages/projects/agentirc-dev/deployments?per_page" "pages_deployments_agentirc.json"
+  cf_mock "/pages/projects/agentirc-dev" "pages_project_agentirc_detail.json"
+  local manifest
+  manifest=$(_plan_only)
+  # Tick only one of the two non-canonical lines. The "ffffffff" row
+  # stays unticked and must NOT receive a DELETE.
+  _tick_short "$manifest" bbbbbbbb
+  _sign "$manifest"
+  cf_mock "/pages/projects/agentirc-dev/deployments/bbbbbbbb" "pages_deployment_delete_ok.json"
+  # Intentionally do NOT mock ffffffff's DELETE — if the script tries to
+  # hit it, the stub returns a synthetic success:false and this test
+  # fails on a real DELETE attempt. Belt and suspenders: assert
+  # curl.log doesn't contain that id either.
+  run bash "$PURGE_SCRIPT" agentirc-dev --manifest "$manifest" --apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"**deleted:** 1"* ]]
+  cf_assert_called "/deployments/bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"
+  # No DELETE on the unticked one.
+  run grep -F "/deployments/ffffffff-ffff-4fff-ffff-ffffffffffff" "$BATS_TEST_TMPDIR/curl.log"
+  [ "$status" -ne 0 ]
 }
 
 @test "purge apply --include-canonical passes ?force=true on the canonical DELETE" {

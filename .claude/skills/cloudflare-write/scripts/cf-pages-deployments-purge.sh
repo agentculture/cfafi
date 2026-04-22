@@ -205,6 +205,27 @@ if (( apply == 0 )); then
   ids_json=$(printf '%s' "$purge_json" | jq '[.[].id]')
   hash=$(ids_sha256 "$ids_json")
 
+  # Canary: a random 22-char alnum string that appears in BOTH the
+  # header and the canary list row. The apply path cross-checks the
+  # two and refuses to proceed if the canary list row is ticked.
+  # That defeats the lazy "sed -i 's/[ ]/[x]/g'" shortcut — ticking
+  # everything also ticks the canary, which aborts the apply.
+  #
+  # Read a fixed-size block first and slice in bash instead of piping
+  # `tr | head -c 22`. With `set -o pipefail` the second head closing
+  # the pipe SIGPIPEs tr, and the whole script exits 141. Use a
+  # generous 256-byte sample so the alnum filter reliably yields at
+  # least 22 characters — 128 bytes flaked ~2% in practice
+  # (binomial(128, 62/256), P(X < 22) ≈ 3%), which was enough to break
+  # one CI run out of ~30.
+  _canary_alnum=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9')
+  canary="${_canary_alnum:0:22}"
+  if (( ${#canary} != 22 )); then
+    echo "ERROR: canary generation yielded fewer than 22 alphanumeric characters after filtering random input" >&2
+    exit 1
+  fi
+  unset _canary_alnum
+
   # Generate an ISO-8601 UTC timestamp without colons — filenames on
   # some filesystems (especially Windows-shared mounts) don't tolerate
   # colons, so use YYYYMMDDTHHMMSSZ.
@@ -215,7 +236,7 @@ if (( apply == 0 )); then
   out_path="$manifest_dir/${ts_file}-${project}.md"
 
   {
-    printf '# cf-purge-manifest v1\n\n'
+    printf '# cf-purge-manifest v2\n\n'
     printf -- '- **project:** %s\n' "$project"
     printf -- '- **account_id:** %s\n' "$CLOUDFLARE_ACCOUNT_ID"
     printf -- '- **generated_at:** %s\n' "$ts_human"
@@ -223,16 +244,36 @@ if (( apply == 0 )); then
     printf -- '- **include_canonical:** %s\n' "$([[ $include_canonical -eq 1 ]] && echo true || echo false)"
     printf -- '- **count:** %s\n' "$purge_count"
     printf -- '- **ids_sha256:** %s\n' "$hash"
+    printf -- '- **canary:** %s\n' "$canary"
     printf '\n'
     printf '## Deployments to delete (%s)\n\n' "$purge_count"
-    printf '| SHORT_ID | ID | ENV | STATUS | CREATED | CANONICAL |\n'
-    printf '| --- | --- | --- | --- | --- | --- |\n'
-    printf '%s' "$purge_json" | jq -r '.[]
-      | [.short_id, .id, .environment, .status, .created_on,
-         (if .is_canonical then "yes" else "no" end)]
-      | @tsv' \
-      | sed 's/|/\\|/g; s/\t/ | /g; s/^/| /; s/$/ |/'
+    # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
+    printf 'Tick `- [x]` on the lines you actually want deleted. Unticked lines\n'
+    printf 'are not deleted now and remain in this manifest — to delete them\n'
+    printf 'later, tick them and re-sign (or re-plan for a fresh manifest if\n'
+    printf 'the project has drifted). Review each line before ticking — the\n'
+    printf 'canary section below catches sloppy "tick everything" sed-replace\n'
+    printf 'shortcuts.\n\n'
+    # Emit each deployment as an unticked GFM task-list row.
+    # Row shape (important — the apply parser depends on it):
+    #   - [ ] **<short8>** · `<full-uuid>` · <env> · <status> · <created> [· CANONICAL]
+    # The parser regex anchors on `- [ ]` / `- [x]` + `**<short8>**` +
+    # backtick-wrapped UUID. Changing the separator changes the parser.
+    printf '%s' "$purge_json" | jq -r '.[] |
+      "- [ ] **\(.short_id)** · `\(.id)` · \(.environment) · \(.status) · \(.created_on)" +
+      (if .is_canonical then " · CANONICAL" else "" end)'
     printf '\n\n'
+    printf '## Canary — do NOT tick\n\n'
+    # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
+    printf 'This box must stay unchecked. It exists to defeat "sed-replace all\n'
+    # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
+    printf '`[ ]` with `[x]`" shortcuts that skip per-line review. If it is\n'
+    printf 'ticked at apply-time, the purge is refused and zero deletions occur.\n'
+    # shellcheck disable=SC2016  # literal backticks wrap markdown inline code
+    printf 'The random string matches the `canary:` header value above; editing\n'
+    printf 'one without the other is detected and rejected.\n\n'
+    # shellcheck disable=SC2016  # literal backticks wrap the canary string
+    printf -- '- [ ] `%s`\n\n' "$canary"
     printf '## Signature\n\n'
     printf 'To approve this purge, append a single line below exactly like:\n\n'
     printf '    SIGNED: <your-name-or-agent-id> <ISO-8601-UTC-timestamp>\n\n'
@@ -243,7 +284,10 @@ if (( apply == 0 )); then
     printf -- '- **Exactly one** `SIGNED:` line; multiples are rejected as ambiguous.\n'
     printf -- '- Timestamp must be within the last %s seconds at apply-time (clock-skew future cap: 5 min).\n' "${CF_PURGE_SIG_TTL:-3600}"
     # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
-    printf -- '- The `ids_sha256` above must still match both the table below and the live deployment set.\n'
+    printf -- '- The `ids_sha256` above must still match both the deployment list and the live set.\n'
+    # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
+    printf -- '- The canary row must be untouched (`- [ ]`) and match the `canary:` header.\n'
+    printf -- '- At least one deployment line must be ticked.\n'
     printf -- '- No new non-canonical deployments may have been added since signing.\n\n'
     printf '<!-- sign on the line below -->\n'
   } > "$out_path"
@@ -254,32 +298,36 @@ if (( apply == 0 )); then
       --arg project "$project" \
       --arg manifest "$out_path" \
       --arg hash "$hash" \
+      --arg canary "$canary" \
       --arg canonical_id "$canonical_id" \
       --argjson include_canonical "$include_canonical" \
       --argjson count "$purge_count" \
-      '{success: true, errors: [], messages: ["dry-run: manifest written, sign to apply"],
+      '{success: true, errors: [], messages: ["dry-run: manifest written, tick + sign to apply"],
         result: {dry_run: true, project: $project, manifest: $manifest,
-                 count: $count, ids_sha256: $hash,
+                 count: $count, ids_sha256: $hash, canary: $canary,
                  canonical_deployment_id: $canonical_id,
                  include_canonical: ($include_canonical == 1)}}'
     exit 0
   fi
 
-  printf '**Manifest written — sign to apply**\n\n'
+  printf '**Manifest written — tick + sign to apply**\n\n'
   printf -- '- **project:** %s\n' "$project"
   printf -- '- **canonical_deployment_id:** %s\n' "${canonical_id:-—}"
   printf -- '- **include_canonical:** %s\n' "$([[ $include_canonical -eq 1 ]] && echo true || echo false)"
   printf -- '- **count:** %s\n' "$purge_count"
   printf -- '- **manifest:** %s\n' "$out_path"
   printf -- '- **ids_sha256:** %s\n' "$hash"
+  printf -- '- **canary:** %s\n' "$canary"
   printf '\n'
   printf 'Next steps:\n\n'
   # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
   printf '1. Open `%s` and inspect the deployment list.\n' "$out_path"
   # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
-  printf '2. Append a single line: `SIGNED: <name> <ISO-UTC-timestamp>`.\n'
+  printf '2. Tick `- [x]` on the lines you want deleted. Leave the canary row under `## Canary` untouched.\n'
   # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
-  printf '3. Run: `%s %s --manifest %s --apply`.\n' "$(basename "$0")" "$project" "$out_path"
+  printf '3. Append a single line: `SIGNED: <name> <ISO-UTC-timestamp>`.\n'
+  # shellcheck disable=SC2016  # literal backticks below wrap markdown inline code
+  printf '4. Run: `%s %s --manifest %s --apply`.\n' "$(basename "$0")" "$project" "$out_path"
   exit 0
 fi
 
@@ -296,9 +344,15 @@ if [[ ! -s "$manifest_path" ]]; then
   exit 1
 fi
 
-# Header sanity.
-if ! grep -q '^# cf-purge-manifest v1$' "$manifest_path"; then
-  echo "ERROR: manifest missing v1 header: $manifest_path" >&2
+# Header sanity. v1 manifests (old table format, no canary) are
+# incompatible with the task-list + canary parser below; they were
+# per-run throwaways anyway so there's nothing to migrate.
+if ! grep -q '^# cf-purge-manifest v2$' "$manifest_path"; then
+  if grep -q '^# cf-purge-manifest v1$' "$manifest_path"; then
+    echo "ERROR: manifest is v1; this script requires v2. Regenerate with the current plan command." >&2
+  else
+    echo "ERROR: manifest missing v2 header: $manifest_path" >&2
+  fi
   exit 1
 fi
 
@@ -326,6 +380,12 @@ m_canonical=$(manifest_read_kv canonical_deployment_id)
 _=$(manifest_read_kv include_canonical)
 m_count=$(manifest_read_kv count)
 m_hash=$(manifest_read_kv ids_sha256)
+m_canary=$(manifest_read_kv canary)
+
+if [[ ! "$m_canary" =~ ^[A-Za-z0-9]{22}$ ]]; then
+  echo "ERROR: manifest canary header is not a 22-char alnum string: $m_canary" >&2
+  exit 1
+fi
 
 if [[ "$m_project" != "$project" ]]; then
   echo "ERROR: manifest project ($m_project) does not match positional arg ($project)" >&2
@@ -344,16 +404,30 @@ if [[ ! "$m_hash" =~ ^[a-f0-9]{64}$ ]]; then
   exit 1
 fi
 
-# Parse the id column out of the table. Rows look like:
-#   | short | full-uuid | env | status | created | canonical |
-# Grab column 3 (1-indexed including the leading empty column from `|`).
-manifest_ids_sorted=$(awk -F' *\\| *' '
-  /^\| [a-f0-9]{8,} \| [a-f0-9-]{36} \|/ { print $3 }
-' "$manifest_path" | sort)
+# Parse the GFM task list. Rows look like:
+#   - [ ] **<short8>** · `<full-uuid>` · <env> · <status> · <created> [· CANONICAL]
+#   - [x] **<short8>** · `<full-uuid>` · …
+#
+# The regex anchors on the checkbox, the bold short_id, and the
+# backtick-wrapped UUID so we don't accidentally match the canary row
+# or any other task-list item.
+# shellcheck disable=SC2016  # literal regex anchors — backticks are grep pattern, not command substitution
+deploy_line_re='^- \[[ xX]\] \*\*[a-f0-9]{8}\*\* · `[a-f0-9-]{36}`'
+# shellcheck disable=SC2016
+approved_line_re='^- \[[xX]\] \*\*[a-f0-9]{8}\*\* · `[a-f0-9-]{36}`'
+# shellcheck disable=SC2016
+uuid_extract_re='s/^.*\*\*[a-f0-9]{8}\*\* · `([a-f0-9-]{36})`.*$/\1/'
+
+# Full superset (any tick state) — feeds the SHA tamper check + drift.
+# `|| true` so grep's "no match → exit 1" path doesn't tank the
+# script under `set -e`; the follow-up count-mismatch check below
+# reports the real problem (zero rows) with a specific message.
+manifest_ids_sorted=$(grep -E "$deploy_line_re" "$manifest_path" \
+  | sed -E "$uuid_extract_re" | sort || true)
 manifest_ids_count=$(printf '%s\n' "$manifest_ids_sorted" | grep -c . || true)
 
 if [[ "$manifest_ids_count" != "$m_count" ]]; then
-  echo "ERROR: manifest header count ($m_count) does not match parsed table rows ($manifest_ids_count)" >&2
+  echo "ERROR: manifest header count ($m_count) does not match parsed task-list rows ($manifest_ids_count)" >&2
   exit 1
 fi
 
@@ -362,8 +436,54 @@ manifest_ids_json=$(printf '%s\n' "$manifest_ids_sorted" \
   | jq -R . | jq -s 'map(select(length > 0))')
 computed_hash=$(ids_sha256 "$manifest_ids_json")
 if [[ "$computed_hash" != "$m_hash" ]]; then
-  echo "ERROR: manifest ids_sha256 mismatch — header says $m_hash but table hashes to $computed_hash" >&2
-  echo "       the manifest has been edited after generation; regenerate it." >&2
+  echo "ERROR: manifest ids_sha256 mismatch — header says $m_hash but task list hashes to $computed_hash" >&2
+  echo "       the manifest's deployment list has been edited after generation; regenerate it." >&2
+  exit 1
+fi
+
+# Approved subset — only lines whose checkbox is `[x]`. This is the
+# operator's explicit per-line approval; everything else is left alone.
+approved_ids_sorted=$(grep -E "$approved_line_re" "$manifest_path" \
+  | sed -E "$uuid_extract_re" | sort || true)
+# shellcheck disable=SC2016
+approved_ids_json=$(printf '%s\n' "$approved_ids_sorted" \
+  | jq -R . | jq -s 'map(select(length > 0))')
+approved_count=$(json_array_length "$approved_ids_json")
+
+# Canary validation: exactly one bare `- [ ] \`<alnum22>\`` row,
+# string equal to the `canary:` header, checkbox NOT ticked. Any
+# failure short-circuits with zero DELETEs. The whole point of the
+# canary is that a "sed replace all [ ] with [x]" shortcut ticks it
+# too; the apply path refusing is what makes per-line review
+# enforceable rather than just expected.
+# shellcheck disable=SC2016  # literal regex — backticks are grep pattern
+canary_line_re='^- \[[ xX]\] `[A-Za-z0-9]{22}`$'
+canary_line_count=$(grep -cE "$canary_line_re" "$manifest_path" || true)
+if [[ "$canary_line_count" != "1" ]]; then
+  echo "ERROR: manifest has $canary_line_count canary rows (expected exactly 1)" >&2
+  exit 1
+fi
+canary_line=$(grep -E "$canary_line_re" "$manifest_path")
+# Extract the 22-char string between the backticks.
+# shellcheck disable=SC2016  # literal sed pattern with backticks
+canary_on_line=$(printf '%s' "$canary_line" | sed -E 's/^.*`([A-Za-z0-9]{22})`$/\1/')
+if [[ "$canary_on_line" != "$m_canary" ]]; then
+  echo "ERROR: canary string on the canary row does not match the canary: header" >&2
+  echo "       header:      $m_canary" >&2
+  echo "       canary row:  $canary_on_line" >&2
+  echo "       both were random-generated at plan-time and must match." >&2
+  exit 1
+fi
+if [[ "$canary_line" =~ ^-\ \[[xX]\] ]]; then
+  echo "ERROR: Canary is ticked. Purge refused — someone ran a tick-everything" >&2
+  echo "       shortcut (e.g. sed -i 's/[ ]/[x]/g'). Regenerate the manifest" >&2
+  echo "       and tick each deployment individually." >&2
+  exit 1
+fi
+
+if (( approved_count == 0 )); then
+  echo "ERROR: No lines are ticked in the manifest. Tick the deployments you" >&2
+  echo "       want to delete (\`- [x]\`) and re-run apply. Nothing was deleted." >&2
   exit 1
 fi
 
@@ -471,19 +591,26 @@ if (( drift_count > 0 )); then
   exit 1
 fi
 
-# Intersection set: ids in both manifest and live. These are what we
-# actually delete. Manifest ids missing from live get skipped (already
-# gone — happens on idempotent re-runs).
+# Intersection set: ids that are both APPROVED (ticked) in the
+# manifest and still present in live. These are what we actually
+# delete. Approved ids missing from live get skipped (already gone —
+# happens on idempotent re-runs). Unticked ids aren't touched at all.
+#
+# Drift detection above operates on the full manifest superset;
+# actual deletes operate on the ticked subset. That separation is
+# intentional: the SHA check asks "was the deployment list tampered
+# with?", while the tick check asks "which of those did the operator
+# approve?".
 # shellcheck disable=SC2016
 intersect_json=$(jq -n \
   --argjson live "$live_ids_json" \
-  --argjson manifest "$manifest_ids_json" \
-  '$manifest - ($manifest - $live)')
+  --argjson approved "$approved_ids_json" \
+  '$approved - ($approved - $live)')
 # shellcheck disable=SC2016
 skipped_json=$(jq -n \
   --argjson live "$live_ids_json" \
-  --argjson manifest "$manifest_ids_json" \
-  '$manifest - $live')
+  --argjson approved "$approved_ids_json" \
+  '$approved - $live')
 
 # Enrich intersection with per-id metadata (short_id, canonical flag)
 # from live; sort oldest-first so a halt-on-error leaves recent
