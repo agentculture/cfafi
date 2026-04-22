@@ -158,7 +158,8 @@ ids_sha256() {
 # the `jq 'length'` idiom used for every count in this script so the
 # literal isn't duplicated four times.
 json_array_length() {
-  printf '%s' "$1" | jq 'length'
+  local json="$1"
+  printf '%s' "$json" | jq 'length'
   return 0
 }
 
