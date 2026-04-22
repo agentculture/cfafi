@@ -24,6 +24,9 @@
 #   --comment=STR   free-text note attached to the record (shows in dashboard)
 #   --apply         actually POST (without it, this is a dry-run)
 #   --json          raw CloudFlare response envelope (or simulated body in dry-run)
+#   --              end-of-options marker. Use when NAME or CONTENT legitimately
+#                   starts with a dash (e.g. some TXT values). Anything after `--`
+#                   is positional, regardless of leading characters.
 #
 # Idempotency key is type+name+content. Exits 1 if a record with the
 # same three fields already exists on the zone. Records with the same
@@ -42,9 +45,19 @@ proxied=0
 ttl=1
 comment="Managed by cf-dns-create.sh in agentculture/cloudflare"
 positional=()
+# `--` end-of-options marker: any arg after it is treated as
+# positional, even if it begins with `-`. Needed for TXT record
+# values (and occasionally content) that legitimately start with a
+# dash — without this, the `-*` case arm would reject them.
+after_ddash=0
 
 for arg in "$@"; do
+  if (( after_ddash )); then
+    positional+=("$arg")
+    continue
+  fi
   case "$arg" in
+    --)          after_ddash=1 ;;
     --json)      mode=json ;;
     --apply)     apply=1 ;;
     --proxied)   proxied=1 ;;
@@ -76,8 +89,8 @@ record_name="${positional[2]}"
 record_content="${positional[3]}"
 
 # Validate record type against CF's supported set. Not exhaustive —
-# this is the subset that covers the redirect/web/mail use cases we
-# actually hit. If you need SRV, CAA, PTR, etc., extend here.
+# this is the subset that covers the redirect/web/mail/auth use cases
+# we actually hit. If you need PTR, URI, TLSA, etc., extend here.
 case "$record_type" in
   A|AAAA|CNAME|TXT|MX|NS|SRV|CAA) ;;
   *)
@@ -121,11 +134,15 @@ fi
 # Idempotency: bail if a record with the same type+name+content
 # already exists on the zone. CF accepts a `match=all` query string
 # that narrows server-side; we use it to keep the response small even
-# on zones with hundreds of records.
-name_encoded=$(jq -rn --arg v "$record_name"    '$v|@uri')
+# on zones with hundreds of records. Every user-supplied value that
+# ends up in the query string is URL-encoded — even `record_type`,
+# which is already allowlist-validated, so we stay consistent with
+# the repo-wide "encode everything from outside" convention.
+type_encoded=$(jq -rn --arg v "$record_type"       '$v|@uri')
+name_encoded=$(jq -rn --arg v "$record_name"       '$v|@uri')
 content_encoded=$(jq -rn --arg v "$record_content" '$v|@uri')
 existing_json=$(cf_api_paginated \
-  "/zones/$zone_id/dns_records?type=$record_type&name=$name_encoded&content=$content_encoded&match=all")
+  "/zones/$zone_id/dns_records?type=$type_encoded&name=$name_encoded&content=$content_encoded&match=all")
 
 # shellcheck disable=SC2016  # single-quoted jq filter
 existing_id=$(printf '%s' "$existing_json" | jq -r '[.result[].id] | .[0] // ""')

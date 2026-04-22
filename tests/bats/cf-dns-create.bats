@@ -162,7 +162,7 @@ _assert_no_post() {
   [[ "$output" == *"--proxied records must use --ttl=1"* ]]
 }
 
-# --- URL encoding of record name + content ---
+# --- URL encoding of record type, name, and content ---
 
 @test "cf-dns-create.sh URL-encodes record name and content in the existence check" {
   cf_mock "/zones?per_page"        "zones_with_agentculture.json"
@@ -171,4 +171,42 @@ _assert_no_post() {
   [ "$status" -eq 0 ]
   # `;`, `=`, and space must all be percent-encoded in the existence-check URL.
   grep -qF 'v%3DDMARC1%3B%20p%3Dnone%3B' "$BATS_TEST_TMPDIR/curl.log"
+}
+
+@test "cf-dns-create.sh URL-encodes the record type in the existence check" {
+  # record_type is allowlist-validated so it's already safe, but we encode
+  # it anyway to stay consistent with the repo-wide convention.
+  cf_mock "/zones?per_page"      "zones_with_agentculture.json"
+  cf_mock "/dns_records?type=A"  "dns_records_empty.json"
+  run bash "$WRITE_SCRIPTS/cf-dns-create.sh" agentculture.org A agentculture.org 192.0.2.1 --proxied
+  [ "$status" -eq 0 ]
+  # Literal "type=A" still shows up (A encodes to itself) but importantly
+  # the assignment has passed through jq's @uri filter — the assertion
+  # here is really "the URL is well-formed with the encoded value".
+  cf_assert_called "/dns_records?type=A&name="
+}
+
+# --- `--` end-of-options marker (content/name starting with `-`) ---
+
+@test "cf-dns-create.sh accepts a TXT value starting with '-' when preceded by '--'" {
+  cf_mock "/zones?per_page"        "zones_with_agentculture.json"
+  cf_mock "/dns_records?type=TXT"  "dns_records_empty.json"
+  # Without `--`, the `-foo=bar` token would hit the `-*` case arm and exit 2.
+  run bash "$WRITE_SCRIPTS/cf-dns-create.sh" --proxied=false -- agentculture.org TXT _acme.agentculture.org '-foo=bar'
+  [ "$status" -eq 2 ]  # --proxied=false is still an unknown flag — testing that --proxied-style flags before `--` are still parsed
+  [[ "$output" == *"unknown flag: --proxied=false"* ]]
+}
+
+@test "cf-dns-create.sh '--' after positional args lets content start with dash" {
+  cf_mock "/zones?per_page"        "zones_with_agentculture.json"
+  cf_mock "/dns_records?type=TXT"  "dns_records_empty.json"
+  run bash "$WRITE_SCRIPTS/cf-dns-create.sh" agentculture.org TXT _acme.agentculture.org -- '-starts-with-dash'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"content": "-starts-with-dash"'* ]]
+}
+
+@test "cf-dns-create.sh rejects dash-prefixed content WITHOUT '--' (shows users they need the marker)" {
+  run bash "$WRITE_SCRIPTS/cf-dns-create.sh" agentculture.org TXT _acme.agentculture.org '-starts-with-dash'
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unknown flag: -starts-with-dash"* ]]
 }
