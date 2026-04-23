@@ -1,0 +1,50 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "name": "culture",
+    "id": "proj-id-culture-new-99999999",
+    "created_on": "2026-04-22T14:30:00.000000Z",
+    "subdomain": "culture.pages.dev",
+    "domains": ["culture.pages.dev"],
+    "production_branch": "main",
+    "source": {
+      "type": "github",
+      "config": {
+        "owner": "agentculture",
+        "repo_name": "culture",
+        "production_branch": "main",
+        "pr_comments_enabled": true,
+        "deployments_enabled": true,
+        "production_deployments_enabled": true,
+        "preview_deployment_setting": "all",
+        "preview_branch_includes": ["*"],
+        "preview_branch_excludes": [],
+        "path_includes": ["*"],
+        "path_excludes": []
+      }
+    },
+    "build_config": {
+      "build_command": "bundle exec jekyll build --config _config.base.yml,_config.culture.yml -d _site_culture",
+      "destination_dir": "_site_culture",
+      "root_dir": ""
+    },
+    "deployment_configs": {
+      "preview": {
+        "fail_open": true,
+        "always_use_latest_compatibility_date": false,
+        "compatibility_date": "2026-04-10",
+        "build_image_major_version": 3,
+        "usage_model": "standard"
+      },
+      "production": {
+        "fail_open": true,
+        "always_use_latest_compatibility_date": false,
+        "compatibility_date": "2026-04-10",
+        "build_image_major_version": 3,
+        "usage_model": "standard"
+      }
+    }
+  }
+}

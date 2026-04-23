@@ -43,6 +43,14 @@ token**) with these *additional* scopes on top of the read scopes:
   Redirect".)
 - **Zone · DNS · Edit** (All zones from AgentCulture) —
   required by `cf-dns-create.sh`
+- **Account · Cloudflare Pages · Edit** (this account) —
+  required by `cf-pages-project-create.sh`,
+  `cf-pages-deployment-delete.sh`, and
+  `cf-pages-deployments-purge.sh`. Creating a Pages project also
+  needs the **Cloudflare Pages GitHub App** to be installed on the
+  source GitHub owner (org or user) and granted access to the
+  target repo — that's a one-time dashboard / GitHub-admin step this
+  skill cannot automate.
 
 Swap the token into `.env` when you're about to run a write script,
 then swap back. One token at a time.
@@ -78,6 +86,7 @@ Every write script in this skill follows the same shape:
 |---|---|
 | Create a Single Redirect for a zone | `bash .claude/skills/cloudflare-write/scripts/cf-redirect-create.sh FROM_HOST TO_HOST [--www] [--status=301] [--apply] [--json]` |
 | Create a DNS record in a zone | `bash .claude/skills/cloudflare-write/scripts/cf-dns-create.sh ZONE TYPE NAME CONTENT [--proxied] [--ttl=N] [--comment=STR] [--apply] [--json]` |
+| Create a Pages project connected to a GitHub repo | `bash .claude/skills/cloudflare-write/scripts/cf-pages-project-create.sh NAME GITHUB_OWNER REPO_NAME [--clone-from=PROJECT] [...] [--apply] [--json]` |
 | Delete one Pages deployment | `bash .claude/skills/cloudflare-write/scripts/cf-pages-deployment-delete.sh PROJECT SHORT_ID_OR_ID [--force-canonical] [--apply] [--json]` |
 | Bulk-delete all deployments in a Pages project | `bash .claude/skills/cloudflare-write/scripts/cf-pages-deployments-purge.sh PROJECT [...]` (two-phase, see §3.3) |
 
@@ -167,6 +176,68 @@ Idempotency key: **type + name + content**. Two A records at the
 same name with different IPs are allowed (CF supports round-robin);
 two records with identical type+name+content are refused as
 duplicates.
+
+### cf-pages-project-create.sh
+
+Creates a Cloudflare Pages project connected to a GitHub repository.
+Mirrors the build + deployment settings of an existing project when
+given `--clone-from=PROJECT`, so "spin up a second project with the
+same style as culture-dev" is one flag, not a dozen.
+
+```sh
+# Dry-run — shows the full POST body we would send, including the
+# build_config / deployment_configs lifted from culture-dev:
+bash .claude/skills/cloudflare-write/scripts/cf-pages-project-create.sh \
+  culture agentculture culture --clone-from=culture-dev
+
+# Apply for real:
+bash .claude/skills/cloudflare-write/scripts/cf-pages-project-create.sh \
+  culture agentculture culture --clone-from=culture-dev --apply
+```
+
+Positional args:
+
+- `NAME` — Pages project name, becomes `NAME.pages.dev`. Must be
+  1-58 chars, lowercase alphanumeric + hyphens, no leading/trailing
+  hyphen. Enforced locally before the POST.
+- `GITHUB_OWNER` — GitHub org or user that owns the repo
+  (e.g. `agentculture`).
+- `REPO_NAME` — repository name within that owner (e.g. `culture`).
+
+Flags:
+
+- `--clone-from=PROJECT` — copy `build_config`, `deployment_configs`,
+  and `production_branch` from an existing Pages project in the
+  same account. Individual overrides (below) still win.
+- `--production-branch=BRANCH` — git branch that produces
+  production deployments. Default `main` (or the cloned value).
+- `--build-command=CMD` — shell command CF runs to build the site.
+- `--destination-dir=DIR` — path CF uploads (relative to root-dir).
+- `--root-dir=DIR` — repo subdirectory to build from. `""` (the
+  default) means the repo root.
+- `--compatibility-date=YYYY-MM-DD` — applied to both preview and
+  production deployment configs.
+- `--build-image-version=N` — `1`, `2`, or `3` (default `3` = latest).
+- `--apply` — actually POST. Without it, dry-run.
+- `--json` — raw CloudFlare response envelope (or simulated body in
+  dry-run).
+
+Idempotency: scripts refuses to proceed if `NAME` already exists in
+the account. Pick a different name or delete the existing project.
+
+**GitHub App prerequisite.** The apply path calls
+`POST /accounts/:id/pages/projects` with the GitHub `owner` and
+`repo_name`. For this to succeed the Cloudflare Pages GitHub App
+must be installed on `GITHUB_OWNER` with access to `REPO_NAME`. If
+the dashboard UI couldn't list the repo when connecting manually,
+the API call will fail for the same underlying reason — the script
+surfaces the CF error and exits 1. The fix is a one-time
+installation/authorization step in the GitHub org admin UI, not
+something this skill can automate.
+
+Custom domains (including apex mappings like `culture.dev`) are not
+created by this script; attach them in the Pages dashboard or via a
+follow-on `cf-pages-domain-add.sh` once that lands.
 
 ### 3.3 cf-pages-deployment-delete.sh
 
