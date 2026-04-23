@@ -52,6 +52,11 @@ from_file=""
 fmt=module
 compat_date=""
 workers_dev=1   # default: enable .workers.dev subdomain (matches agex-proxy)
+# Track which fmt flag (if any) was explicitly passed, so we can
+# reject the mutually-exclusive `--module --service-worker` case
+# instead of silently letting the later flag win.
+fmt_module_set=0
+fmt_service_worker_set=0
 positional=()
 
 for arg in "$@"; do
@@ -59,8 +64,8 @@ for arg in "$@"; do
     --json)                   mode=json ;;
     --apply)                  apply=1 ;;
     --from-file=*)            from_file="${arg#*=}" ;;
-    --module)                 fmt=module ;;
-    --service-worker)         fmt=service-worker ;;
+    --module)                 fmt=module;         fmt_module_set=1 ;;
+    --service-worker)         fmt=service-worker; fmt_service_worker_set=1 ;;
     --compatibility-date=*)   compat_date="${arg#*=}" ;;
     --no-workers-dev)         workers_dev=0 ;;
     -h|--help)
@@ -83,6 +88,11 @@ if (( ${#positional[@]} != 1 )); then
   exit 2
 fi
 name="${positional[0]}"
+
+if (( fmt_module_set && fmt_service_worker_set )); then
+  echo "ERROR: --module and --service-worker are mutually exclusive" >&2
+  exit 2
+fi
 
 # Worker script names: 1-63 chars, [a-z0-9_-], cannot start/end with
 # hyphen or underscore. Enforce locally so errors come from us, not a
@@ -114,19 +124,25 @@ fi
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 cf_require_account_id
 
-# Build the metadata JSON part based on format.
+# Build the metadata JSON part based on format. `part_name` is the
+# multipart form-field name AND the filename= attribute — CF matches
+# the script part against metadata.main_module / metadata.body_part
+# via that string, so they have to agree. Module format points at
+# worker.js; service-worker format points at `script`.
 case "$fmt" in
   module)
     # shellcheck disable=SC2016  # single-quoted jq filter
     metadata=$(jq -n --arg date "$compat_date" \
       '{main_module: "worker.js", compatibility_date: $date}')
     part_ct="application/javascript+module"
+    part_name="worker.js"
     ;;
   service-worker)
     # shellcheck disable=SC2016  # single-quoted jq filter
     metadata=$(jq -n --arg date "$compat_date" \
       '{body_part: "script", compatibility_date: $date}')
     part_ct="application/javascript"
+    part_name="script"
     ;;
   *)
     echo "ERROR: internal: unknown format: $fmt" >&2
@@ -185,7 +201,7 @@ if (( apply == 0 )); then
   # shellcheck disable=SC2016  # literal backticks fence a markdown code block
   printf 'metadata:\n\n```json\n%s\n```\n\n' "$metadata"
   # shellcheck disable=SC2016  # literal backticks open a markdown code fence
-  printf 'worker.js preview (first 20 lines):\n\n```javascript\n'
+  printf '%s preview (first 20 lines):\n\n```javascript\n' "$part_name"
   head -20 "$from_file"
   printf '```\n'
   # shellcheck disable=SC2016  # literal backticks wrap markdown inline code
@@ -203,13 +219,16 @@ fi
 # shell re-quoting surprises.
 #
 # IMPORTANT: `-F "name=@path"` makes curl emit
-# `Content-Disposition: form-data; name="worker.js"; filename="afi-proxy.js"`
-# — the filename comes from the source path's basename. CF's module
+# `Content-Disposition: form-data; name="$part_name"; filename="afi-proxy.js"`
+# — the filename comes from the source path's basename. CF's
 # resolver then complains with code 10021 "No such module: worker.js"
-# because `main_module` points at `worker.js` but the only part CF
-# sees is `filename="afi-proxy.js"`. The fix is `;filename=worker.js`
-# which overrides the filename regardless of the source path. Keep
-# this — removing it breaks every apply against the live API.
+# (module mode) or a similar miss for service-worker mode, because
+# metadata.main_module / metadata.body_part points at "$part_name"
+# but the only part CF sees is `filename="afi-proxy.js"`. Fix:
+# `;filename=$part_name`, which overrides the filename regardless of
+# the source path. The part's form-field NAME (left of the =) must
+# also match $part_name, since some CF paths key off that too.
+# Removing either breaks every apply against the live API.
 meta_tmp=$(mktemp "${TMPDIR:-/tmp}/cf-worker-metadata.XXXXXX.json")
 trap 'rm -f "$meta_tmp"' EXIT
 printf '%s' "$metadata" > "$meta_tmp"
@@ -220,7 +239,7 @@ url_upload="$CF_API_BASE/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$name"
 response=$(curl -sS -X PUT \
   -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   -F "metadata=@$meta_tmp;type=application/json;filename=metadata.json" \
-  -F "worker.js=@$from_file;type=$part_ct;filename=worker.js" \
+  -F "$part_name=@$from_file;type=$part_ct;filename=$part_name" \
   "$url_upload")
 
 if ! printf '%s' "$response" | jq -e '.success == true' >/dev/null 2>&1; then

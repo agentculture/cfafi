@@ -170,6 +170,34 @@ _assert_no_mutation() {
   [[ "$output" == *"unknown flag"* ]]
 }
 
+@test "cf-worker-create.sh exits 2 when both --module and --service-worker are given" {
+  run bash "$WRITE_SCRIPTS/cf-worker-create.sh" afi-proxy \
+    --from-file="$WORKER_SRC" --module --service-worker
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "cf-worker-create.sh --service-worker --apply sends part named 'script'" {
+  cf_mock "/workers/scripts?per_page"            "workers_scripts_empty.json"
+  cf_mock "/workers/scripts/my-worker"           "workers_script_create_ok.json"
+  cf_mock "/workers/scripts/my-worker/subdomain" "workers_script_subdomain_enabled.json"
+  run bash "$WRITE_SCRIPTS/cf-worker-create.sh" my-worker \
+    --from-file="$WORKER_SRC" --service-worker --apply
+  [ "$status" -eq 0 ]
+  # metadata.body_part="script" — the multipart part MUST be named
+  # "script" with filename="script", not "worker.js". Otherwise CF
+  # rejects with a module-not-found error (service-worker format).
+  cf_assert_called "script=@"
+  cf_assert_called "application/javascript"
+  cf_assert_called ";filename=script"
+  # Negative: the old bug (always sending worker.js) must not regress.
+  if grep -qF 'worker.js=@' "$BATS_TEST_TMPDIR/curl.log"; then
+    echo "--service-worker leaked worker.js=@ form field; curl log:" >&2
+    cat "$BATS_TEST_TMPDIR/curl.log" >&2
+    return 1
+  fi
+}
+
 @test "cf-worker-create.sh uses today's date when --compatibility-date omitted" {
   cf_mock "/workers/scripts?per_page" "workers_scripts_empty.json"
   run bash "$WRITE_SCRIPTS/cf-worker-create.sh" afi-proxy \

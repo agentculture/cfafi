@@ -14,6 +14,10 @@
 // redirect follow, same-origin Location rewrite).
 
 const UPSTREAM = "__UPSTREAM__";
+// Parse once so the same-origin check below is tolerant of trailing
+// slashes / paths in the rendered UPSTREAM string — we only care
+// about the scheme+host+port triple, not the full URL.
+const UPSTREAM_ORIGIN = new URL(UPSTREAM).origin;
 
 export default {
   async fetch(request) {
@@ -48,7 +52,7 @@ export default {
       const location = response.headers.get("location");
       if (location) {
         const locationUrl = new URL(location, upstreamUrl);
-        if (locationUrl.origin === UPSTREAM) {
+        if (locationUrl.origin === UPSTREAM_ORIGIN) {
           const rewritten = new URL(request.url);
           rewritten.pathname = "/__SUBPATH__" + locationUrl.pathname;
           rewritten.search = locationUrl.search;
