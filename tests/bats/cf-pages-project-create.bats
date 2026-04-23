@@ -204,6 +204,19 @@ _assert_no_post() {
   echo "$output" | jq -e '.result.would_post.deployment_configs.production | has("compatibility_date") | not'
 }
 
+@test "cf-pages-project-create.sh explicit empty --build-command clears cloned value" {
+  cf_mock "/pages/projects?per_page"    "pages_projects_with_culture_dev.json"
+  cf_mock "/pages/projects/culture-dev" "pages_project_culture_dev_detail.json"
+  run bash "$WRITE_SCRIPTS/cf-pages-project-create.sh" culture agentculture culture \
+    --clone-from=culture-dev --build-command= --json
+  [ "$status" -eq 0 ]
+  # Explicit empty flag must beat the cloned build_command — otherwise
+  # users can't unset a cloned value short of editing the clone source.
+  echo "$output" | jq -e '.result.would_post.build_config.build_command == ""'
+  # Other cloned fields still inherited.
+  echo "$output" | jq -e '.result.would_post.build_config.destination_dir == "_site_culture"'
+}
+
 @test "cf-pages-project-create.sh --production-branch overrides default" {
   cf_mock "/pages/projects?per_page" "pages_projects_with_culture_dev.json"
   run bash "$WRITE_SCRIPTS/cf-pages-project-create.sh" culture agentculture culture \

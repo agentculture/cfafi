@@ -36,5 +36,5 @@
       }
     }
   ],
-  "result_info": {"page": 1, "per_page": 20, "total_pages": 1, "count": 2, "total_count": 2}
+  "result_info": {"page": 1, "per_page": 10, "total_pages": 1, "count": 2, "total_count": 2}
 }

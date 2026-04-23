@@ -54,10 +54,16 @@ destination_dir=""
 root_dir=""
 compatibility_date=""
 build_image_version=""
-# Track whether --root-dir was explicitly passed: "" is a meaningful
-# value (repo root) that's distinct from "unset" (fall back to clone
-# or default).
+# Track whether each overridable flag was explicitly passed: "" is a
+# meaningful value (e.g. clear a cloned build_command) that's distinct
+# from "unset" (fall back to clone or built-in default). Without these
+# booleans, a plain `:-` expansion silently treats "" as "fall back".
 root_dir_set=0
+build_command_set=0
+destination_dir_set=0
+compatibility_date_set=0
+production_branch_set=0
+build_image_version_set=0
 positional=()
 
 for arg in "$@"; do
@@ -65,12 +71,12 @@ for arg in "$@"; do
     --json)   mode=json ;;
     --apply)  apply=1 ;;
     --clone-from=*)           clone_from="${arg#*=}" ;;
-    --production-branch=*)    production_branch="${arg#*=}" ;;
-    --build-command=*)        build_command="${arg#*=}" ;;
-    --destination-dir=*)      destination_dir="${arg#*=}" ;;
+    --production-branch=*)    production_branch="${arg#*=}"; production_branch_set=1 ;;
+    --build-command=*)        build_command="${arg#*=}"; build_command_set=1 ;;
+    --destination-dir=*)      destination_dir="${arg#*=}"; destination_dir_set=1 ;;
     --root-dir=*)             root_dir="${arg#*=}"; root_dir_set=1 ;;
-    --compatibility-date=*)   compatibility_date="${arg#*=}" ;;
-    --build-image-version=*)  build_image_version="${arg#*=}" ;;
+    --compatibility-date=*)   compatibility_date="${arg#*=}"; compatibility_date_set=1 ;;
+    --build-image-version=*)  build_image_version="${arg#*=}"; build_image_version_set=1 ;;
     -h|--help)
       awk 'NR==1{next} /^#/{sub(/^# ?/, ""); print; next} {exit}' "$0"
       exit 0
@@ -145,9 +151,10 @@ cf_require_account_id
 export CF_PAGE_SIZE="${CF_PAGE_SIZE:-10}"
 
 # Pre-flight: make sure NAME isn't already taken in this account.
-# GET a single project returns 404 (8000007 "Project not found") if
-# absent — we treat that as "ok to create". Any other error path
-# propagates via cf_api's `exit 1`.
+# List every Pages project via the paginated endpoint, then filter by
+# name with jq. Any API/listing error propagates via cf_api_paginated's
+# `exit 1`. The same list also serves --clone-from's existence check
+# below, so we pay one round-trip for both.
 projects_json=$(cf_api_paginated "/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects")
 # shellcheck disable=SC2016  # single-quoted jq filter
 existing_id=$(printf '%s' "$projects_json" | jq -r --arg n "$name" \
@@ -167,14 +174,22 @@ cloned_production_branch=""
 cloned_compat_date=""
 cloned_build_image=""
 if [[ -n "$clone_from" ]]; then
+  # Existence check against the list we already fetched — no second
+  # round-trip. Use `any(...)` because we don't need the id, only
+  # confirmation that the name resolves.
   # shellcheck disable=SC2016  # single-quoted jq filter
-  clone_id=$(printf '%s' "$projects_json" | jq -r --arg n "$clone_from" \
-    '[.result[] | select(.name == $n) | .id] | .[0] // ""')
-  if [[ -z "$clone_id" ]]; then
+  if ! printf '%s' "$projects_json" | jq -e --arg n "$clone_from" \
+      'any(.result[]; .name == $n)' >/dev/null; then
     echo "ERROR: --clone-from project '$clone_from' not found in this account" >&2
     exit 1
   fi
-  clone_detail=$(cf_api "/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$clone_from")
+  # URL-encode --clone-from before interpolating into the path. Project
+  # names are locally validated as lowercase alnum + hyphen for *new*
+  # projects, but existing projects may have been created via the
+  # dashboard under older, looser rules — be defensive on the lookup.
+  # shellcheck disable=SC2016  # single-quoted jq filter
+  clone_from_encoded=$(printf '%s' "$clone_from" | jq -sRr @uri)
+  clone_detail=$(cf_api "/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$clone_from_encoded")
   cloned_build_command=$(printf '%s' "$clone_detail" | jq -r '.result.build_config.build_command // ""')
   cloned_destination_dir=$(printf '%s' "$clone_detail" | jq -r '.result.build_config.destination_dir // ""')
   cloned_root_dir=$(printf '%s' "$clone_detail" | jq -r '.result.build_config.root_dir // ""')
@@ -184,16 +199,21 @@ if [[ -n "$clone_from" ]]; then
 fi
 
 # Explicit flags win over clone; clone wins over built-in defaults.
-effective_production_branch="${production_branch:-${cloned_production_branch:-main}}"
-effective_build_command="${build_command:-$cloned_build_command}"
-effective_destination_dir="${destination_dir:-$cloned_destination_dir}"
-if (( root_dir_set )); then
-  effective_root_dir="$root_dir"
-else
-  effective_root_dir="$cloned_root_dir"
-fi
-effective_compat_date="${compatibility_date:-$cloned_compat_date}"
-effective_build_image="${build_image_version:-${cloned_build_image:-3}}"
+# `*_set` booleans distinguish "flag passed with empty value" (which
+# must override the clone) from "flag not passed" (fall back to
+# clone / default). A plain `:-` would conflate the two.
+if (( production_branch_set ));    then effective_production_branch="$production_branch";
+else effective_production_branch="${cloned_production_branch:-main}"; fi
+if (( build_command_set ));        then effective_build_command="$build_command";
+else effective_build_command="$cloned_build_command"; fi
+if (( destination_dir_set ));      then effective_destination_dir="$destination_dir";
+else effective_destination_dir="$cloned_destination_dir"; fi
+if (( root_dir_set ));             then effective_root_dir="$root_dir";
+else effective_root_dir="$cloned_root_dir"; fi
+if (( compatibility_date_set ));   then effective_compat_date="$compatibility_date";
+else effective_compat_date="$cloned_compat_date"; fi
+if (( build_image_version_set ));  then effective_build_image="$build_image_version";
+else effective_build_image="${cloned_build_image:-3}"; fi
 
 # Build the POST body. Unset fields are emitted as empty-string /
 # default values — CF treats an unset build_command as "no build
