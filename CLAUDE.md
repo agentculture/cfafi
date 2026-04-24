@@ -62,7 +62,7 @@ Pagination is transparent: `cf_api_paginated` in `_lib.sh` walks every page of a
 
 ## Tooling choice
 
-**Python CLI (`cfafi`):** The installed `cfafi` CLI is the preferred surface for all verbs that have been ported. Install with `uv tool install cfafi`. The package uses only stdlib + `requests` (no agent-framework dependencies) to keep the install fast and the surface auditable.
+**Python CLI (`cfafi`):** The installed `cfafi` CLI is the preferred surface for all verbs that have been ported. Install with `uv tool install cfafi`. The package has zero runtime dependencies — `pyproject.toml` declares `dependencies = []` and HTTP is done via stdlib `urllib`. Keeps the install fast, the surface auditable, and matches afi-cli's house style.
 
 **Bash skills (coexistence):** Bash + `curl` + `jq` remains the implementation language for bash scripts under `.claude/skills/cfafi/scripts/` and `.claude/skills/cfafi-write/scripts/`. Matches the house style in `culture/` and `citation-cli/`. `wrangler` CLI and the official SDK are acceptable for one-off needs, but bash skills default to REST via `curl` for a uniform surface across DNS/Workers/Pages/account and to avoid stateful `wrangler login` under a dedicated agent user. Bash scripts remain supported for verbs not yet ported to the Python CLI — tracked in `docs/superpowers/specs/2026-04-24-cfafi-v0.1.0-python-cli-design.md` § "Subsequent PRs".
 
