@@ -80,7 +80,7 @@ def test_dns_create_json_dry_run(http_stub, capsys):
 
 def test_dns_create_zone_not_found(http_stub, capsys):
     http_stub.queue(_zones_envelope(("other.dev", "zid-9")))
-    rc = main(["dns", "create", "culture.dev", "A", "www", "1.2.3.4"])
+    rc = main(["dns", "create", "culture.dev", "A", "www", "203.0.113.10"])
     err = capsys.readouterr().err
     assert rc != 0
     assert "culture.dev" in err and "not found" in err
@@ -91,11 +91,11 @@ def test_dns_create_idempotency_existing_record(http_stub, capsys):
         _zones_envelope(("culture.dev", "zid-1")),
         {
             "success": True, "errors": [], "messages": [],
-            "result": [{"id": "rec-existing", "type": "A", "name": "www.culture.dev", "content": "1.2.3.4"}],  # noqa: E501
+            "result": [{"id": "rec-existing", "type": "A", "name": "www.culture.dev", "content": "203.0.113.10"}],  # noqa: E501
             "result_info": {"page": 1, "total_pages": 1},
         },
     )
-    rc = main(["dns", "create", "culture.dev", "A", "www", "1.2.3.4"])
+    rc = main(["dns", "create", "culture.dev", "A", "www", "203.0.113.10"])
     err = capsys.readouterr().err
     assert rc != 0
     assert "already exists" in err
@@ -142,7 +142,7 @@ def test_dns_create_proxied_flag(http_stub, capsys):
 
 
 def test_dns_create_proxied_with_manual_ttl_rejected(capsys):
-    rc = main(["dns", "create", "culture.dev", "A", "x", "1.2.3.4", "--proxied", "--ttl=300"])
+    rc = main(["dns", "create", "culture.dev", "A", "x", "203.0.113.10", "--proxied", "--ttl=300"])
     err = capsys.readouterr().err
     assert rc == EXIT_USER_ERROR
     assert "proxied" in err and "ttl" in err.lower()

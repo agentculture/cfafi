@@ -53,9 +53,9 @@ Pass via stdin. All fields are optional — only non-empty sections are rendered
 
 ## What It Updates
 
-1. `pyproject.toml` — the `version = "x.y.z"` field (single source of truth;
-   `cfafi/__init__.py` reads it via `importlib.metadata`, so there is no
-   separate `__version__` string to keep in sync).
+1. `pyproject.toml` — the `version = "x.y.z"` field, and when present the
+   package `__version__` string in `cfafi/__init__.py` is kept in sync by
+   the bump script.
 2. `CHANGELOG.md` — inserts a new `## [x.y.z] - YYYY-MM-DD` entry at the top.
 
 ## Workflow

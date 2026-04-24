@@ -4,6 +4,19 @@ All notable changes to this project will be documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-24
+
+### Changed
+
+- replace 1.2.3.4 IP in tests with RFC 5737 TEST-NET-3 203.0.113.10 (SonarCloud hotspot)
+
+### Fixed
+
+- docstring path in dns.py after skill rename (Copilot #1)
+- version-check CI runs incorrectly on push events (qodo bug #3)
+- version-bump SKILL.md misdescribed version-sync (Copilot #2)
+- spec JSON error contract drifted from actual implementation (Copilot #3)
+
 ## [0.1.0] - 2026-04-24
 
 ### Added

@@ -23,6 +23,12 @@ jobs:
       - run: uv run pytest -n auto --cov=cfafi --cov-report=xml:coverage.xml --cov-report=term -v
 
   version-check:
+    # Only run on PR events. On push to main after a merged PR, the
+    # comparison would always fail ($PR_VERSION == $MAIN_VERSION because
+    # HEAD and origin/main point at the same commit) and the script
+    # calls `gh pr comment ${{ github.event.pull_request.number }}`,
+    # which is empty on push. Restricting the trigger avoids both.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

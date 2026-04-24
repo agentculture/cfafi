@@ -1,7 +1,7 @@
 """``cfafi dns <verb>`` — DNS record management.
 
 v0.1.0 exposes ``create`` only. The bash counterpart at
-``.claude/skills/cloudflare-write/scripts/cf-dns-create.sh`` is the
+``.claude/skills/cfafi-write/scripts/cf-dns-create.sh`` is the
 behavioural reference — same dry-run default, same idempotency check,
 same supported record-type set.
 """
