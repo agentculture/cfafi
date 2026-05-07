@@ -8,9 +8,19 @@ from cfafi.cli._errors import EXIT_USER_ERROR, CfafiError
 
 def find_org(*, account_id: str) -> dict | None:
     """Return the Access org dict, or None if Zero Trust is not enabled."""
-    response = _api.http_request(
-        "GET", f"/accounts/{account_id}/access/organizations"
-    )
+    try:
+        response = _api.http_request(
+            "GET", f"/accounts/{account_id}/access/organizations"
+        )
+    except CfafiError as exc:
+        # CF returns code 9999 / "access.api.error.not_enabled" before
+        # any org exists. Treat as "no org" so callers fall into their
+        # cleaner Zero-Trust-disabled branch instead of bubbling CF's
+        # raw error. Auth/scope errors (401/403) still propagate.
+        msg = exc.message or ""
+        if "9999" in msg and "not_enabled" in msg:
+            return None
+        raise
     return response.get("result") or None
 
 
