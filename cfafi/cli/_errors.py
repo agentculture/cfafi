@@ -37,6 +37,11 @@ class CfafiError(Exception):
     code: int
     message: str
     remediation: str = ""
+    # Populated by `_raise_http_error` from the CF response's
+    # `errors[0].code` when present. None for non-CF errors (env,
+    # validation). Lets helpers branch on a structured code without
+    # parsing `message`. See `_remote_login._access_org.find_org`.
+    cf_error_code: int | None = None
 
     def __post_init__(self) -> None:
         super().__init__(self.message)

@@ -222,3 +222,64 @@ def test_teardown_keep_tunnel_skips_tunnel_delete(http_stub):
     # tunnel listing is skipped entirely under keep_tunnel
     result = teardown(ctx=_ctx(), keep_tunnel=True)
     assert "tunnel" not in [s.name for s in result.steps]
+
+
+def test_setup_raises_clean_error_when_zt_not_enabled(http_stub):
+    # When Zero Trust isn't enabled, find_org swallows the CF 9999
+    # error into None; setup() should then raise its friendlier
+    # EXIT_USER_ERROR pointing at the dashboard URL rather than
+    # bubbling CF's raw "Access is not enabled" message.
+    from cfafi.cli._errors import EXIT_API, EXIT_USER_ERROR, CfafiError
+
+    http_stub.set(
+        "GET", "/accounts/acc-1/access/organizations",
+        CfafiError(
+            code=EXIT_API,
+            message=(
+                "CloudFlare API 9999: access.api.error.not_enabled: "
+                "Access is not enabled."
+            ),
+            remediation="HTTP 404 from CloudFlare; inspect the request body and retry",
+            cf_error_code=9999,
+        ),
+    )
+    with pytest.raises(CfafiError) as exc:
+        setup(
+            ctx=_ctx(), emails=["me@example.com"], domains=[],
+            with_service_token=False, session_duration="24h",
+        )
+    assert exc.value.code == EXIT_USER_ERROR
+    assert "Zero Trust is not enabled" in exc.value.message
+    assert "one.dash.cloudflare.com" in (exc.value.remediation or "")
+
+
+def test_show_short_circuits_access_endpoints_when_zt_disabled(http_stub):
+    # qodo Bug #2: when find_org returns None, show() must NOT call
+    # /access/apps or /access/service_tokens — those would 9999 too.
+    # Tunnel and DNS are still queried (not Access-scoped).
+    from cfafi.cli._errors import EXIT_API, CfafiError
+
+    http_stub.set(
+        "GET", "/accounts/acc-1/access/organizations",
+        CfafiError(
+            code=EXIT_API,
+            message="CloudFlare API 9999: access.api.error.not_enabled: ...",
+            remediation="...",
+            cf_error_code=9999,
+        ),
+    )
+    http_stub.set("GET", "/accounts/acc-1/cfd_tunnel", _empty_list())
+    http_stub.set("GET", "/zones/zid-1/dns_records", _empty_list())
+
+    result = show(ctx=_ctx())
+    assert result.team_domain is None
+    assert result.access_app is None
+    assert result.policy is None
+    assert result.service_token is None
+    # Tunnel and DNS still queried.
+    paths = [c[1] for c in http_stub.calls]
+    assert "/accounts/acc-1/cfd_tunnel" in paths
+    assert "/zones/zid-1/dns_records" in paths
+    # Access endpoints MUST NOT appear.
+    assert "/accounts/acc-1/access/apps" not in paths
+    assert "/accounts/acc-1/access/service_tokens" not in paths

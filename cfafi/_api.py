@@ -71,14 +71,17 @@ def _raise_http_error(exc: urllib.error.HTTPError) -> NoReturn:
     errors = data.get("errors") or [{"code": exc.code, "message": exc.reason}]
     first = errors[0]
     code_category = EXIT_AUTH if exc.code in (401, 403) else EXIT_API
+    cf_code_raw = first.get("code", exc.code)
+    cf_error_code = cf_code_raw if isinstance(cf_code_raw, int) else None
     raise CfafiError(
         code=code_category,
-        message=f"CloudFlare API {first.get('code', exc.code)}: {first.get('message', exc.reason)}",
+        message=f"CloudFlare API {cf_code_raw}: {first.get('message', exc.reason)}",
         remediation=(
             "check token scopes against docs/SETUP.md"
             if code_category == EXIT_AUTH
             else f"HTTP {exc.code} from CloudFlare; inspect the request body and retry"
         ),
+        cf_error_code=cf_error_code,
     ) from None
 
 
