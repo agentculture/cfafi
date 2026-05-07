@@ -277,3 +277,30 @@ the first release:
 
 GitHub side: `Settings → Environments → New environment` for both
 `pypi` and `testpypi`. No secrets needed.
+
+## 9. Operator token scopes (for `cfafi remote-login`)
+
+The read-only token described above is enough for `cfafi zones list`,
+`cfafi dns list`, `cfafi whoami`, and `cfafi remote-login show`. To run
+`cfafi remote-login setup` or `cfafi remote-login teardown`, mint a
+**second** token with broader scopes — keep the read-only token for
+day-to-day inventory.
+
+Mint at <https://dash.cloudflare.com/profile/api-tokens> → **Create
+Token** → **Custom token**. Required permission groups:
+
+| Permission                            | Resource | Note                                                                                                |
+|---------------------------------------|----------|-----------------------------------------------------------------------------------------------------|
+| Account → Cloudflare Tunnel           | Edit     | Tunnel create/delete/get-token                                                                      |
+| Account → Access: Apps and Policies   | Edit     | Access app + allow-policy                                                                           |
+| Account → Access: Service Tokens      | Edit     | Only when using `--with-service-token`                                                              |
+| Account → Access: Organizations       | Edit     | Validates Zero Trust org; can be downgraded to Read once ZT is enabled                              |
+| Zone → DNS                            | Edit     | On the zone(s) hosting your hostnames                                                               |
+
+`cfafi remote-login` runs a pre-flight `GET /user/tokens/verify` and
+errors out with the missing scopes' exact names if your token is too
+narrow — you'll see a clean message rather than a 403 mid-orchestration.
+
+**Token minting is operator-driven.** cfafi never calls
+`POST /user/tokens` itself; an issue or PR proposing it will be
+declined.
