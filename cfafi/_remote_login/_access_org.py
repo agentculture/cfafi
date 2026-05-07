@@ -13,15 +13,11 @@ def find_org(*, account_id: str) -> dict | None:
             "GET", f"/accounts/{account_id}/access/organizations"
         )
     except CfafiError as exc:
-        # CF returns code 9999 / "access.api.error.not_enabled" before
+        # CF returns code 9999 ("access.api.error.not_enabled") before
         # any org exists. Treat as "no org" so callers fall into their
         # cleaner Zero-Trust-disabled branch instead of bubbling CF's
         # raw error. Auth/scope errors (401/403) still propagate.
-        # Anchor on the prefix `_raise_http_error` produces (`CloudFlare
-        # API 9999:`) so an unrelated error whose message merely contains
-        # "9999" as a substring can't false-positive.
-        msg = exc.message or ""
-        if "CloudFlare API 9999:" in msg and "not_enabled" in msg:
+        if exc.cf_error_code == 9999:
             return None
         raise
     return response.get("result") or None

@@ -31,9 +31,9 @@ def test_find_org_returns_none_when_result_is_null(http_stub):
 
 
 def test_find_org_returns_none_when_access_not_enabled(http_stub):
-    # CF returns HTTP 4xx with `code: 9999, message:
-    # "access.api.error.not_enabled: ..."` before Zero Trust is
-    # enabled on the account. The helper must swallow that into None
+    # CF returns HTTP 4xx with `errors[0].code == 9999` before Zero
+    # Trust is enabled on the account. The helper branches on the
+    # typed `cf_error_code` field (populated by `_raise_http_error`)
     # so callers fall into their cleaner ZT-disabled branch rather
     # than bubbling CF's raw error.
     http_stub.set(
@@ -45,6 +45,7 @@ def test_find_org_returns_none_when_access_not_enabled(http_stub):
                 "Access is not enabled. Visit the Access dashboard..."
             ),
             remediation="HTTP 404 from CloudFlare; inspect the request body and retry",
+            cf_error_code=9999,
         ),
     )
     assert find_org(account_id="acc-1") is None
@@ -60,6 +61,7 @@ def test_find_org_propagates_other_errors(http_stub):
             code=EXIT_AUTH,
             message="CloudFlare API 10000: Authentication error",
             remediation="check token scopes against docs/SETUP.md",
+            cf_error_code=10000,
         ),
     )
     with pytest.raises(CfafiError) as exc:
@@ -68,10 +70,10 @@ def test_find_org_propagates_other_errors(http_stub):
     assert "Authentication error" in exc.value.message
 
 
-def test_find_org_does_not_swallow_unrelated_error_with_9999_substring(http_stub):
-    # The check is anchored on "CloudFlare API 9999:" so an unrelated
-    # error whose message merely contains "9999" or "not_enabled" as
-    # substrings (e.g. an id or a different field) must still propagate.
+def test_find_org_does_not_swallow_error_with_9999_in_message_only(http_stub):
+    # The match is on the typed `cf_error_code` field, not the message
+    # body. An error whose message merely *contains* "9999" (e.g. as
+    # part of an id) but whose CF code is something else must propagate.
     http_stub.set(
         "GET", "/accounts/acc-1/access/organizations",
         CfafiError(
@@ -81,6 +83,7 @@ def test_find_org_does_not_swallow_unrelated_error_with_9999_substring(http_stub
                 "in unrelated context"
             ),
             remediation="HTTP 500 from CloudFlare; inspect the request body and retry",
+            cf_error_code=12345,
         ),
     )
     with pytest.raises(CfafiError) as exc:

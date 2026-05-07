@@ -147,12 +147,26 @@ def setup(
 
 
 def show(*, ctx: Context) -> ShowResult:
-    """Read every resource setup would create, returning presence/absence."""
+    """Read every resource setup would create, returning presence/absence.
+
+    When Zero Trust is disabled (``find_org`` returns None), every other
+    Access endpoint (`/access/apps`, `/access/service_tokens`) would also
+    return CF error 9999. Skip those probes and report the Access-side
+    fields as None — the operator gets a clean "(not found)" rendering
+    instead of a fresh 4xx mid-`show`. Tunnel and DNS aren't
+    Access-scoped, so we still query them.
+    """
     org = find_org(account_id=ctx.account_id)
     tunnel = find_tunnel(
         account_id=ctx.account_id, name=ctx.names.tunnel_name,
     )
     dns = find_cname(zone_id=ctx.zone_id, hostname=ctx.hostname)
+    if org is None:
+        return ShowResult(
+            team_domain=None,
+            tunnel=tunnel, dns=dns,
+            access_app=None, policy=None, service_token=None,
+        )
     app = find_app(account_id=ctx.account_id, hostname=ctx.hostname)
     policy = (
         find_policy(
@@ -167,7 +181,7 @@ def show(*, ctx: Context) -> ShowResult:
         account_id=ctx.account_id, name=ctx.names.service_token_name,
     )
     return ShowResult(
-        team_domain=(org or {}).get("auth_domain"),
+        team_domain=org.get("auth_domain"),
         tunnel=tunnel,
         dns=dns,
         access_app=app,
