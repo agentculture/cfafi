@@ -43,9 +43,9 @@ def ensure_service_token(
                     "retrievable"
                 ),
                 remediation=(
-                    f"pass --service-token-name=<other> or run "
-                    f"`cfafi remote-login teardown --hostname <host> --apply` "
-                    f"first"
+                    "pass --service-token-name=<other> or run "
+                    "`cfafi remote-login teardown --hostname <host> --apply` "
+                    "first"
                 ),
             )
         return existing.get("client_id") or "", None, False
