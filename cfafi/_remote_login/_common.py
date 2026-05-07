@@ -46,6 +46,47 @@ class Context:
     names: Names
 
 
+@dataclass
+class StepRecord:
+    """One step of a setup or teardown plan."""
+
+    name: str    # e.g. "tunnel", "dns", "access-app"
+    action: str  # "ensured" | "skipped" | "deleted" | "absent"
+    detail: str  # human-readable, no secrets
+
+
+@dataclass
+class SetupResult:
+    team_domain: str | None
+    tunnel_id: str
+    tunnel_name: str
+    tunnel_token: str
+    dns_record_id: str
+    dns_target: str
+    access_app_id: str
+    policy_id: str
+    policy_emails: list[str]
+    policy_domains: list[str]
+    service_token_client_id: str | None
+    service_token_client_secret: str | None
+    steps: list[StepRecord]
+
+
+@dataclass
+class ShowResult:
+    team_domain: str | None
+    tunnel: dict | None
+    dns: dict | None
+    access_app: dict | None
+    policy: dict | None
+    service_token: dict | None
+
+
+@dataclass
+class TeardownResult:
+    steps: list[StepRecord]
+
+
 import cfafi._api as _api  # noqa: E402  (after dataclass defs to keep top-of-file lean)
 from cfafi.cli._errors import EXIT_USER_ERROR, CfafiError
 
