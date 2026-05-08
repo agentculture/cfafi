@@ -4,6 +4,12 @@ All notable changes to this project will be documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-08
+
+### Changed
+
+- Distribution name on PyPI is now `cultureflare` only. `cfafi` 0.2.2 was the final release on the legacy name; install `cultureflare` for ongoing updates. The `cfafi` console-script alias stays. The Python module `cfafi` stays.
+
 ## [0.2.2] - 2026-05-07
 
 ### Added
