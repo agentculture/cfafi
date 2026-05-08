@@ -290,8 +290,21 @@ def show(*, ctx: Context, seal: SealPlan | None = None) -> ShowResult:
     )
 
 
-def teardown(*, ctx: Context, keep_tunnel: bool) -> TeardownResult:
-    """Delete in reverse-dependency order. The ZT org is never touched."""
+def teardown(
+    *,
+    ctx: Context,
+    keep_tunnel: bool,
+    seal: SealPlan | None = None,
+) -> TeardownResult:
+    """Delete in reverse-dependency order. The ZT org is never touched.
+
+    When ``seal`` is provided and enabled, also attempts to delete each
+    sealed shushu entry. Deletion failures are recorded as steps with
+    action ``"delete-failed"`` but do NOT abort the function — CF-side
+    resources are already gone.
+    """
+    if seal is None:
+        seal = derive_seal_plan(hostname=ctx.hostname, shushu_arg=None)
     steps: list[StepRecord] = []
 
     # 1. Service token.
@@ -343,5 +356,25 @@ def teardown(*, ctx: Context, keep_tunnel: bool) -> TeardownResult:
             steps.append(StepRecord(
                 name="tunnel", action="deleted", detail=f"id={tun['id']}",
             ))
+
+    # 6. Shushu sealed entries (best-effort; failures recorded, not raised).
+    if seal.enabled:
+        for step_name, target in (
+            ("shushu-tunnel-token", seal.tunnel_token_target),
+            ("shushu-svc-secret", seal.service_token_secret_target),
+        ):
+            try:
+                ok = _shushu_sink.delete(target)
+                steps.append(StepRecord(
+                    name=step_name,
+                    action="deleted" if ok else "skipped",
+                    detail=target.name,
+                ))
+            except CfafiError as exc:
+                steps.append(StepRecord(
+                    name=step_name,
+                    action="delete-failed",
+                    detail=f"{target.name}: {exc.message}",
+                ))
 
     return TeardownResult(steps=steps)

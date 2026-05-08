@@ -255,52 +255,70 @@ def test_show_reports_partial_state(http_stub):
     assert result.service_token is None
 
 
-def test_teardown_reverses_setup_skipping_zt_org(http_stub):
-    # Order of deletes: service-token, policy, app, dns, tunnel.
+def _program_teardown_happy_path(
+    http_stub,
+    *,
+    account_id="acc-1",
+    zone_id="zid-1",
+    hostname="app.example.com",
+    tunnel_id="tun-1",
+    app_id="app-1",
+    policy_id="pol-1",
+    svc_id="st-1",
+):
+    """Program all HTTP stubs for a happy-path teardown() run."""
+    tunnel_name = hostname.replace(".", "-")
+    svc_name = f"{hostname}-svc"
+    policy_name = f"{hostname}-allow"
+
     http_stub.set(
-        "GET", "/accounts/acc-1/access/service_tokens",
-        _list_envelope({"id": "st-1", "name": "irc.culture.dev-svc",
-                        "client_id": "CID"}),
+        "GET", f"/accounts/{account_id}/access/service_tokens",
+        _list_envelope({"id": svc_id, "name": svc_name, "client_id": "CID"}),
     )
     http_stub.set(
-        "DELETE", "/accounts/acc-1/access/service_tokens/st-1",
-        {"success": True, "errors": [], "messages": [], "result": {"id": "st-1"}},
+        "DELETE", f"/accounts/{account_id}/access/service_tokens/{svc_id}",
+        {"success": True, "errors": [], "messages": [], "result": {"id": svc_id}},
     )
     http_stub.set(
-        "GET", "/accounts/acc-1/access/apps",
-        _list_envelope({"id": "app-1", "domain": "irc.culture.dev"}),
+        "GET", f"/accounts/{account_id}/access/apps",
+        _list_envelope({"id": app_id, "domain": hostname}),
     )
     http_stub.set(
-        "GET", "/accounts/acc-1/access/apps/app-1/policies",
-        _list_envelope({"id": "pol-1", "name": "irc.culture.dev-allow"}),
+        "GET", f"/accounts/{account_id}/access/apps/{app_id}/policies",
+        _list_envelope({"id": policy_id, "name": policy_name}),
     )
     http_stub.set(
-        "DELETE", "/accounts/acc-1/access/apps/app-1/policies/pol-1",
-        {"success": True, "errors": [], "messages": [], "result": {"id": "pol-1"}},
+        "DELETE", f"/accounts/{account_id}/access/apps/{app_id}/policies/{policy_id}",
+        {"success": True, "errors": [], "messages": [], "result": {"id": policy_id}},
     )
     http_stub.set(
-        "DELETE", "/accounts/acc-1/access/apps/app-1",
-        {"success": True, "errors": [], "messages": [], "result": {"id": "app-1"}},
+        "DELETE", f"/accounts/{account_id}/access/apps/{app_id}",
+        {"success": True, "errors": [], "messages": [], "result": {"id": app_id}},
     )
     http_stub.set(
-        "GET", "/zones/zid-1/dns_records",
+        "GET", f"/zones/{zone_id}/dns_records",
         _list_envelope({
-            "id": "rec-1", "type": "CNAME", "name": "irc.culture.dev",
-            "content": "tun-1.cfargotunnel.com", "proxied": True,
+            "id": "rec-1", "type": "CNAME", "name": hostname,
+            "content": f"{tunnel_id}.cfargotunnel.com", "proxied": True,
         }),
     )
     http_stub.set(
-        "DELETE", "/zones/zid-1/dns_records/rec-1",
+        "DELETE", f"/zones/{zone_id}/dns_records/rec-1",
         {"success": True, "errors": [], "messages": [], "result": {"id": "rec-1"}},
     )
     http_stub.set(
-        "GET", "/accounts/acc-1/cfd_tunnel",
-        _list_envelope({"id": "tun-1", "name": "irc-culture-dev"}),
+        "GET", f"/accounts/{account_id}/cfd_tunnel",
+        _list_envelope({"id": tunnel_id, "name": tunnel_name}),
     )
     http_stub.set(
-        "DELETE", "/accounts/acc-1/cfd_tunnel/tun-1",
-        {"success": True, "errors": [], "messages": [], "result": {"id": "tun-1"}},
+        "DELETE", f"/accounts/{account_id}/cfd_tunnel/{tunnel_id}",
+        {"success": True, "errors": [], "messages": [], "result": {"id": tunnel_id}},
     )
+
+
+def test_teardown_reverses_setup_skipping_zt_org(http_stub):
+    # Order of deletes: service-token, policy, app, dns, tunnel.
+    _program_teardown_happy_path(http_stub, hostname="irc.culture.dev")
     result = teardown(ctx=_ctx(), keep_tunnel=False)
     assert isinstance(result, TeardownResult)
     assert [s.name for s in result.steps] == [
@@ -525,3 +543,71 @@ def test_show_with_seal_handles_shushu_missing(http_stub, monkeypatch):
     # show is non-fatal: render None for each entry
     assert result.sealed_in_status["tunnel_token"] is None
     assert result.sealed_in_status["service_token_client_secret"] is None
+
+
+def test_teardown_with_seal_deletes_both_entries(http_stub, monkeypatch):
+    _program_teardown_happy_path(http_stub, hostname="app.example.com")
+
+    deleted: list[ShushuTarget] = []
+
+    def fake_delete(target):
+        deleted.append(target)
+        return True
+
+    monkeypatch.setattr(
+        "cultureflare._secrets._shushu_sink.delete", fake_delete
+    )
+
+    plan = derive_seal_plan(hostname="app.example.com", shushu_arg="alice")
+    ctx = _ctx_for("app.example.com")
+    result = teardown(ctx=ctx, keep_tunnel=False, seal=plan)
+
+    names = [t.name for t in deleted]
+    assert "CULTUREFLARE_APP_EXAMPLE_COM_TUNNEL_TOKEN" in names
+    assert "CULTUREFLARE_APP_EXAMPLE_COM_SVC_SECRET" in names
+    seal_steps = [s for s in result.steps if "shushu" in s.name]
+    assert len(seal_steps) == 2
+
+
+def test_teardown_with_seal_records_failed_delete_but_does_not_abort(
+    http_stub, monkeypatch,
+):
+    _program_teardown_happy_path(http_stub, hostname="app.example.com")
+
+    def fake_delete(target):
+        if target.name.endswith("_SVC_SECRET"):
+            raise CfafiError(
+                code=EXIT_API,
+                message="shushu store unreadable",
+                remediation="shushu doctor",
+            )
+        return True
+
+    monkeypatch.setattr(
+        "cultureflare._secrets._shushu_sink.delete", fake_delete
+    )
+
+    plan = derive_seal_plan(hostname="app.example.com", shushu_arg="")
+    ctx = _ctx_for("app.example.com")
+    result = teardown(ctx=ctx, keep_tunnel=False, seal=plan)
+
+    actions = {s.name: s.action for s in result.steps if "shushu" in s.name}
+    assert actions == {
+        "shushu-tunnel-token": "deleted",
+        "shushu-svc-secret": "delete-failed",
+    }
+
+
+def test_teardown_without_seal_does_not_call_delete(http_stub, monkeypatch):
+    _program_teardown_happy_path(http_stub, hostname="app.example.com")
+
+    def fake_delete(target):
+        raise AssertionError("must not delete when seal disabled")
+
+    monkeypatch.setattr(
+        "cultureflare._secrets._shushu_sink.delete", fake_delete
+    )
+
+    plan = derive_seal_plan(hostname="app.example.com", shushu_arg=None)
+    ctx = _ctx_for("app.example.com")
+    teardown(ctx=ctx, keep_tunnel=False, seal=plan)
