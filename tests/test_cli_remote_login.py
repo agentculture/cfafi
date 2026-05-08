@@ -2,7 +2,7 @@
 
 import json
 
-from cfafi.cli import main
+from cultureflare.cli import main
 
 
 def _zones_one(name="culture.dev", zid="zid-1"):

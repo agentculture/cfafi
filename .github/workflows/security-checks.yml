@@ -25,11 +25,11 @@ jobs:
       - run: uv sync
 
       - name: Run Bandit
-        run: uv run bandit -r cfafi/ -f json -o bandit-results.json -c pyproject.toml
+        run: uv run bandit -r cultureflare/ -f json -o bandit-results.json -c pyproject.toml
         continue-on-error: true
 
       - name: Run Pylint
-        run: uv run pylint cfafi/ --output-format=json:pylint-results.json,text
+        run: uv run pylint cultureflare/ --output-format=json:pylint-results.json,text
         continue-on-error: true
 
       - name: Upload Security Results

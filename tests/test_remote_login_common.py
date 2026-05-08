@@ -1,7 +1,7 @@
-"""Tests for cfafi._remote_login._common."""
+"""Tests for cultureflare._remote_login._common."""
 
-from cfafi._remote_login._common import Context, derive_names, resolve_zone
-from cfafi.cli._errors import CfafiError
+from cultureflare._remote_login._common import Context, derive_names, resolve_zone
+from cultureflare.cli._errors import CfafiError
 import pytest
 
 

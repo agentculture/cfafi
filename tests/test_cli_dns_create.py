@@ -2,8 +2,8 @@
 
 import json
 
-from cfafi.cli import main
-from cfafi.cli._errors import EXIT_USER_ERROR
+from cultureflare.cli import main
+from cultureflare.cli._errors import EXIT_USER_ERROR
 
 
 def _zones_envelope(*names_ids):

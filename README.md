@@ -1,10 +1,11 @@
 # cultureflare
 
-> ⚠️ **`cfafi` is now `cultureflare` on PyPI.** v0.2.2 was the final
-> release under the `cfafi` distribution name; install
+> ⚠️ **`cfafi` was renamed to `cultureflare`.** v0.2.2 was the final
+> release under the `cfafi` PyPI distribution name; install
 > [`cultureflare`](https://pypi.org/project/cultureflare/) for ongoing
-> updates. The `cfafi` CLI command stays as an alias and the Python
-> module is still `import cfafi`, so existing scripts keep working.
+> updates. The `cfafi` CLI command stays as an alias, and a thin
+> `cfafi/__init__.py` shim ships in the wheel so existing
+> `import cfafi` consumers keep working without changes.
 
 Agent-first CLI for managing CloudFlare state in the AgentCulture OSS
 org. Action-oriented (commands describe operator intent, not REST
@@ -22,13 +23,12 @@ for the same entry point.
 
 > If you previously ran `uv tool install cfafi`: `cfafi` 0.2.2 is the
 > final release under that name. Switch to
-> `uv tool install cultureflare` (or `uv tool upgrade --reinstall cfafi`
-> won't help — there's nothing newer there). Both CLI commands keep
-> working after the swap.
+> `uv tool install cultureflare` to keep getting updates. Both CLI
+> commands keep working after the swap.
 
 ```bash
 cultureflare --version
-cfafi --version       # same version, same code
+cfafi --version       # same version, same code (the back-compat alias)
 ```
 
 ## Quick start
@@ -98,7 +98,7 @@ $ cultureflare zones list --json
 {"success":true,"errors":[],"messages":[],"result":[{"id":"…","name":"culture.dev","status":"active","plan":{"name":"Free Website"}}],"result_info":{"page":1,"total_pages":1,"count":1,"total_count":1}}
 
 $ cultureflare dns create culture.dev TXT _cfafi-test "hello" --json
-{"success":true,"errors":[],"messages":["dry-run: no changes applied"],"result":{"dry_run":true,"zone_id":"…","would_post":{"type":"TXT","name":"_cfafi-test","content":"hello","ttl":1,"proxied":false,"comment":"Managed by cfafi in agentculture/cfafi"}}}
+{"success":true,"errors":[],"messages":["dry-run: no changes applied"],"result":{"dry_run":true,"zone_id":"…","would_post":{"type":"TXT","name":"_cfafi-test","content":"hello","ttl":1,"proxied":false,"comment":"Managed by cultureflare in agentculture/cultureflare"}}}
 
 $ cultureflare remote-login show --hostname irc.culture.dev --json
 {"success":true,"errors":[],"messages":[],"result":{"hostname":"irc.culture.dev","team_domain":"agentculture.cloudflareaccess.com","tunnel":null,"dns":null,"access_app":null,"policy":null,"service_token":null}}
@@ -151,8 +151,8 @@ output shape, plus the resource IDs that got created.
 ## Hybrid Python CLI / bash skills
 
 The Python CLI is the preferred surface for verbs that have been
-ported. Bash counterparts under `.claude/skills/cfafi/scripts/` (read)
-and `.claude/skills/cfafi-write/scripts/` (write) remain supported for
+ported. Bash counterparts under `.claude/skills/cultureflare/scripts/` (read)
+and `.claude/skills/cultureflare-write/scripts/` (write) remain supported for
 verbs not yet migrated:
 
 - **Python today:** `whoami`, `zones list`, `dns create`,
@@ -175,7 +175,7 @@ Migration tracker:
   matching, no "find me the zone for this hostname" outside of
   `remote-login`).
 - No API-token minting (`POST /user/tokens`) — operator-driven by
-  design; cfafi never creates tokens for you.
+  design; cultureflare never creates tokens for you.
 - No Zero Trust org onboarding via API in v0.2; if the account
   doesn't have ZT enabled, `remote-login setup` errors with a
   dashboard link.
@@ -193,9 +193,9 @@ The two design docs that drive current and near-term work:
   — orchestration model, idempotency, one-shot-secret handling.
 
 Out-of-scope-for-now items are listed in each spec's "Out of scope" /
-"Future" section. Repo rename `agentculture/cfafi` →
-`agentculture/cultureflare` and the corresponding `cfafi/` Python
-module rename are deferred — the dual-distribution shim and CLI alias
+"Future" section. The rename `agentculture/cfafi` →
+`agentculture/cultureflare` is now done; the Python module dir is `cultureflare/` with a
+`cfafi/` shim package for back-compat — the dual-distribution shim and CLI alias
 mean both names work simultaneously.
 
 ## Tests

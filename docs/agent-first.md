@@ -10,17 +10,17 @@ It states the three-surface rule (CLI, MCP, HTTP) and the per-surface
 opinions (learnability on CLI, minimalism on MCP, discoverability on
 HTTP).
 
-## How cfafi applies it (v0.1.0)
+## How cultureflare applies it (v0.1.0)
 
 **CLI surface (what we have):**
 
 - Every verb has a markdown default and a `--json` opt-in.
 - Errors never dump a Python traceback; they emit `error: <msg>` and
   `hint: <remediation>` (or a JSON envelope with the same fields).
-- `cfafi learn` prints a self-teaching prompt; `cfafi explain <path>`
+- `cultureflare learn` prints a self-teaching prompt; `cultureflare explain <path>`
   resolves markdown docs per verb.
 - Mutations default to dry-run; `--apply` commits. An agent that
-  forgets to read the docs can still run `cfafi dns create ...`
+  forgets to read the docs can still run `cultureflare dns create ...`
   without mutating anything.
 
 **MCP and HTTP surfaces:** planned for future minor releases. The CLI's

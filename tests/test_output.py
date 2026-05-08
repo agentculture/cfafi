@@ -1,12 +1,12 @@
-"""Tests for cfafi.cli._output."""
+"""Tests for cultureflare.cli._output."""
 
 import io
 import json
 
 import pytest
 
-from cfafi.cli._errors import EXIT_API, EXIT_USER_ERROR, CfafiError
-from cfafi.cli._output import (
+from cultureflare.cli._errors import EXIT_API, EXIT_USER_ERROR, CfafiError
+from cultureflare.cli._output import (
     emit_error,
     emit_json,
     emit_kv,

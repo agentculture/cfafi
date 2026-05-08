@@ -1,8 +1,8 @@
 # Setup
 
 This repo talks to the AgentCulture CloudFlare account over the REST
-API. The installed `cfafi` CLI reads credentials from environment
-variables; bash skills under `.claude/skills/cfafi/` also accept a
+API. The installed `cultureflare` CLI reads credentials from environment
+variables; bash skills under `.claude/skills/cultureflare/` also accept a
 `.env` file at the repo root for local development.
 
 This guide walks you through:
@@ -19,7 +19,7 @@ This guide walks you through:
 
 ## Credentials — environment variables
 
-The installed `cfafi` CLI reads `CLOUDFLARE_API_TOKEN` and
+The installed `cultureflare` CLI reads `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` from the environment only. It does not walk
 upward for a `.env` file.
 
@@ -27,17 +27,17 @@ upward for a `.env` file.
 
 ```bash
 # 1. Store creds in a file owned by the agent's POSIX user, mode 0600:
-install -m 0600 /dev/null ~/.config/agent/cfafi.env
-$EDITOR ~/.config/agent/cfafi.env
+install -m 0600 /dev/null ~/.config/agent/cultureflare.env
+$EDITOR ~/.config/agent/cultureflare.env
 # CLOUDFLARE_API_TOKEN=...
 # CLOUDFLARE_ACCOUNT_ID=...
 
-# 2. Source into the environment just before invoking cfafi:
-set -a; . ~/.config/agent/cfafi.env; set +a
-cfafi zones list
+# 2. Source into the environment just before invoking cultureflare:
+set -a; . ~/.config/agent/cultureflare.env; set +a
+cultureflare zones list
 ```
 
-Bash scripts under `.claude/skills/cfafi/scripts/` still read `.env`
+Bash scripts under `.claude/skills/cultureflare/scripts/` still read `.env`
 from the repo root during coexistence — that's a dev-convenience for
 people working in the repo, not how the installed CLI behaves.
 
@@ -68,13 +68,13 @@ people working in the repo, not how the installed CLI behaves.
 Every script below needs at least the scopes in its row. `cf-status.sh`
 needs the union of everything (it calls all the others).
 
-| Scope (CloudFlare dashboard label)     | Level   | Access | `cfafi` verb | Bash script |
+| Scope (CloudFlare dashboard label)     | Level   | Access | `cultureflare` verb | Bash script |
 |----------------------------------------|---------|--------|---|---|
-| **Account · Account Settings**         | Account | Read   | `cfafi whoami` | `cf-whoami.sh` |
+| **Account · Account Settings**         | Account | Read   | `cultureflare whoami` | `cf-whoami.sh` |
 | **Account · Workers Scripts**          | Account | Read   | — | `cf-workers.sh` |
 | **Account · Cloudflare Pages**         | Account | Read   | — | `cf-pages.sh` |
 | **Account · Account Analytics**        | Account | Read   | — (optional) | — |
-| **Zone · Zone** (All zones in account) | Zone    | Read   | `cfafi zones list` | `cf-zones.sh` |
+| **Zone · Zone** (All zones in account) | Zone    | Read   | `cultureflare zones list` | `cf-zones.sh` |
 | **Zone · DNS** (All zones in account)  | Zone    | Read   | — | `cf-dns.sh <zone>` |
 | **Zone · Workers Routes** (All zones)  | Zone    | Read   | — | `cf-workers-routes.sh` |
 
@@ -83,24 +83,24 @@ account**. Scoping to a single zone is the most common setup mistake —
 it silently passes `cf-zones.sh` (account-level) while failing every
 per-zone call with the same `code 10000` error.
 
-### 2.5 Write-ops token (optional, for the `cfafi-write` skill and `cfafi dns create`)
+### 2.5 Write-ops token (optional, for the `cultureflare-write` skill and `cultureflare dns create`)
 
 The table above lists **Read** scopes only. Scripts in the companion
-`cfafi-write` skill (create / update / delete operations) and the
-`cfafi dns create` Python verb need **Edit** scopes, which are
+`cultureflare-write` skill (create / update / delete operations) and the
+`cultureflare dns create` Python verb need **Edit** scopes, which are
 intentionally gated behind a separate token.
 
 Create a **second** token — keep it distinct from your read token so
 the mutating credential isn't lying around on machines that only need
 inventory access. Suggested name: `claudeflare-write`. Give it every
-scope from the Read table above (so `cfafi whoami` / `cfafi zones list`
+scope from the Read table above (so `cultureflare whoami` / `cultureflare zones list`
 still work) **plus** the Edit scopes below. Scope to the AgentCulture
 account and "All zones from an account" exactly like the read token.
 
-| Scope (CloudFlare dashboard label)       | Level   | Access | `cfafi` verb | Bash script |
+| Scope (CloudFlare dashboard label)       | Level   | Access | `cultureflare` verb | Bash script |
 |------------------------------------------|---------|--------|---|---|
 | **Zone · Single Redirect** (All zones)  | Zone    | Edit   | — | `cf-redirect-create.sh` |
-| **Zone · DNS** (All zones)               | Zone    | Edit   | `cfafi dns create` | `cf-dns-create.sh` |
+| **Zone · DNS** (All zones)               | Zone    | Edit   | `cultureflare dns create` | `cf-dns-create.sh` |
 | **Account · Cloudflare Pages**           | Account | Edit   | — | `cf-pages-deployment-delete.sh` / `cf-pages-deployments-purge.sh` |
 
 Swap tokens by editing `.env`'s `CLOUDFLARE_API_TOKEN` when you're
@@ -128,8 +128,8 @@ The ID is a 32-character hex string, e.g. `1f094060...`.
 **For the installed CLI** — use the env-file pattern from §1 above:
 
 ```bash
-set -a; . ~/.config/agent/cfafi.env; set +a
-cfafi zones list
+set -a; . ~/.config/agent/cultureflare.env; set +a
+cultureflare zones list
 ```
 
 **For bash skills in the repo (dev convenience)** — from the repo root:
@@ -156,21 +156,21 @@ Run these in order. Any failure points at a specific fix below.
 **Python CLI (preferred):**
 
 ```sh
-cfafi whoami
-cfafi zones list
+cultureflare whoami
+cultureflare zones list
 ```
 
 **Bash skills (fallback / dev):**
 
 ```sh
-bash .claude/skills/cfafi/scripts/cf-whoami.sh
-bash .claude/skills/cfafi/scripts/cf-zones.sh
-bash .claude/skills/cfafi/scripts/cf-status.sh
+bash .claude/skills/cultureflare/scripts/cf-whoami.sh
+bash .claude/skills/cultureflare/scripts/cf-zones.sh
+bash .claude/skills/cultureflare/scripts/cf-status.sh
 ```
 
-- `cfafi whoami` / `cf-whoami.sh` exercise the token itself (no scope
+- `cultureflare whoami` / `cf-whoami.sh` exercise the token itself (no scope
   requirements beyond "token is valid").
-- `cfafi zones list` / `cf-zones.sh` exercise the `Zone · Zone` scope.
+- `cultureflare zones list` / `cf-zones.sh` exercise the `Zone · Zone` scope.
 - `cf-status.sh` exercises every remaining scope (DNS, Workers
   Scripts, Workers Routes, Pages) in one shot — if this succeeds, the
   token is fully provisioned.
@@ -181,15 +181,15 @@ mutating anything:
 
 ```sh
 # DNS · Edit via Python CLI
-cfafi dns create agentculture.org A agentculture.org 192.0.2.1 --proxied
+cultureflare dns create agentculture.org A agentculture.org 192.0.2.1 --proxied
 # (dry-run by default — add --apply to commit)
 
 # Single Redirect · Edit via bash skill
-bash .claude/skills/cfafi-write/scripts/cf-redirect-create.sh \
+bash .claude/skills/cultureflare-write/scripts/cf-redirect-create.sh \
   agentculture.org culture.dev --www
 
 # DNS · Edit via bash skill
-bash .claude/skills/cfafi-write/scripts/cf-dns-create.sh \
+bash .claude/skills/cultureflare-write/scripts/cf-dns-create.sh \
   agentculture.org A agentculture.org 192.0.2.1 --proxied
 ```
 
@@ -253,9 +253,9 @@ When the token is compromised or a team member leaves:
 1. Dashboard → API Tokens → find the token → **Roll** (issues a new
    secret for the same scopes) or **Delete** (invalidates; you need
    to create a new one from scratch).
-2. Update `~/.config/agent/cfafi.env` (or `.env` for dev) on every
+2. Update `~/.config/agent/cultureflare.env` (or `.env` for dev) on every
    machine running this skill.
-3. `cfafi whoami` (or `cf-whoami.sh`) is the quickest way to confirm
+3. `cultureflare whoami` (or `cf-whoami.sh`) is the quickest way to confirm
    the new token is live.
 
 There is no separate rotation workflow in this repo — everything flows
@@ -266,27 +266,26 @@ through the environment variable.
 Publishing to PyPI uses OIDC — no API tokens stored anywhere. From
 v0.3.0 onward, the repo publishes a single distribution under the
 `cultureflare` name. (`cfafi` was the original distribution name and
-is frozen at v0.2.2 — the legacy pending publishers + GitHub
-environments below are kept intact for that historical release but
-unused by the current workflow.)
+is frozen at v0.2.2 — the legacy `cfafi` PyPI project still exists
+with its history through 0.2.2, but no future versions will ship
+there.)
 
 ### `cultureflare` (canonical, in use)
 
 1. PyPI → `cultureflare` project → Publishing → pending publisher:
    - Publisher: GitHub
    - Owner: `agentculture`
-   - Repo: `cfafi` *(repo rename is deferred; the publisher follows
-     the source repo, not the package name)*
+   - Repo: `cultureflare`
    - Workflow: `publish.yml`
    - Environment: `pypi`
 2. Repeat on TestPyPI with environment `testpypi`.
 3. GitHub: Settings → Environments → `pypi` and `testpypi` already
-   exist from the legacy cfafi setup; no new environments needed.
+   exist from the legacy `cfafi` setup; no new environments needed.
 
 The publish workflow at `.github/workflows/publish.yml` builds with
 `name = "cultureflare"` directly from `pyproject.toml` (no
 in-place rewrite) and uploads via `uv publish --trusted-publishing
-always` through the same `pypi` / `testpypi` environments cfafi
+always` through the same `pypi` / `testpypi` environments `cfafi`
 used.
 
 ### `cfafi` (legacy, frozen at v0.2.2)
@@ -294,14 +293,14 @@ used.
 The `cfafi` PyPI project still exists with its history through
 v0.2.2 — that's the bridge release that dual-published under both
 names. It's no longer in the publish workflow; nothing newer than
-0.2.2 will ever ship there. The cfafi pending publisher on PyPI is
+0.2.2 will ever ship there. The `cfafi` pending publisher on PyPI is
 now superseded by the cultureflare publisher pointing at the same
 `pypi` / `testpypi` GitHub environments.
 
-## 9. Operator token scopes (for `cfafi remote-login`)
+## 9. Operator token scopes (for `cultureflare remote-login`)
 
 The read-only token described above is **not** sufficient for any
-`cfafi remote-login` verb — even `show` calls `/access/organizations`,
+`cultureflare remote-login` verb — even `show` calls `/access/organizations`,
 `/cfd_tunnel`, `/access/apps`, and `/access/service_tokens`, which
 the read-only scope set doesn't cover. Mint a **second** token for
 `remote-login` and keep the read-only one for inventory (`zones list`,
@@ -325,11 +324,11 @@ Token** → **Custom token**. Permission groups:
 
 **Scope correctness is not preflight-validated.** `/user/tokens/verify`
 returns only `id` / `status` / `not_before` / `expires_on` — it does
-not expose the token's permission groups. `cfafi remote-login`
+not expose the token's permission groups. `cultureflare remote-login`
 preflights only that the token is alive (`status == "active"`); if a
 required scope is missing, you'll see a `403` from the first endpoint
 that needs it, with remediation pointing back to this section.
 
-**Token minting is operator-driven.** cfafi never calls
+**Token minting is operator-driven.** cultureflare never calls
 `POST /user/tokens` itself; an issue or PR proposing it will be
 declined.

@@ -1,9 +1,9 @@
-"""Tests for cfafi._remote_login._render."""
+"""Tests for cultureflare._remote_login._render."""
 
-from cfafi._remote_login._common import (
+from cultureflare._remote_login._common import (
     SetupResult, ShowResult, StepRecord, TeardownResult,
 )
-from cfafi._remote_login._render import (
+from cultureflare._remote_login._render import (
     render_setup_markdown, render_setup_json,
     render_show_markdown, render_show_json,
     render_teardown_markdown, render_teardown_json,
