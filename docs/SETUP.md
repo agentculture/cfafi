@@ -263,28 +263,14 @@ through the environment variable.
 
 ## 8. PyPI Trusted Publisher (maintainer setup, one-time)
 
-Publishing to PyPI uses OIDC — no API tokens stored anywhere. The
-repo dual-publishes the same source under two distribution names:
+Publishing to PyPI uses OIDC — no API tokens stored anywhere. From
+v0.3.0 onward, the repo publishes a single distribution under the
+`cultureflare` name. (`cfafi` was the original distribution name and
+is frozen at v0.2.2 — the legacy pending publishers + GitHub
+environments below are kept intact for that historical release but
+unused by the current workflow.)
 
-- **`cfafi`** — frozen at v0.2.2 (final cfafi release).
-- **`cultureflare`** — canonical name going forward.
-
-Each name needs its own pending publisher pair (PyPI + TestPyPI) and
-its own GitHub environment. Publish flow lives in
-`.github/workflows/publish.yml`.
-
-### `cfafi` (legacy, frozen at 0.2.2)
-
-1. PyPI → `cfafi` project → Publishing → pending publisher:
-   - Publisher: GitHub
-   - Owner: `agentculture`
-   - Repo: `cfafi`
-   - Workflow: `publish.yml`
-   - Environment: `pypi`
-2. Repeat on TestPyPI with environment `testpypi`.
-3. GitHub: Settings → Environments → `pypi` and `testpypi`.
-
-### `cultureflare` (canonical going forward)
+### `cultureflare` (canonical, in use)
 
 1. PyPI → `cultureflare` project → Publishing → pending publisher:
    - Publisher: GitHub
@@ -297,16 +283,19 @@ its own GitHub environment. Publish flow lives in
 3. GitHub: Settings → Environments → `pypi-cultureflare` and
    `testpypi-cultureflare`. No secrets needed.
 
-The publish workflow patches `pyproject.toml` in-place to swap the
-distribution name (`name = "cfafi"` → `name = "cultureflare"`) for
-the cultureflare-named build, then `uv build` + `uv publish` in the
-`pypi-cultureflare` / `testpypi-cultureflare` environment uploads to
-the cultureflare project. The cfafi-named jobs run unchanged.
+The publish workflow at `.github/workflows/publish.yml` builds with
+`name = "cultureflare"` directly from `pyproject.toml` (no
+in-place rewrite) and uploads via `uv publish --trusted-publishing
+always`.
 
-Until the cultureflare environments + pending publishers are wired,
-the cultureflare publish steps in CI run with `continue-on-error:
-true` so they don't block the cfafi publish path. Remove that guard
-in a follow-up PR once verification is complete.
+### `cfafi` (legacy, frozen at v0.2.2)
+
+The `cfafi` PyPI project still exists with its history through
+v0.2.2 — that's the bridge release that dual-published under both
+names. It's no longer in the publish workflow; nothing newer than
+0.2.2 will ever ship there. The corresponding pending publishers
+and GitHub environments (`pypi`, `testpypi`) can stay in place
+without effect, or be removed in a follow-up cleanup PR.
 
 ## 9. Operator token scopes (for `cfafi remote-login`)
 

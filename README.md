@@ -1,10 +1,10 @@
-# cfafi → cultureflare
+# cultureflare
 
-> ⚠️ **`cfafi` is being renamed to `cultureflare`.** This is the last
-> release on the `cfafi` PyPI name (v0.2.2). Future versions ship as
-> [`cultureflare`](https://pypi.org/project/cultureflare/) from the
-> same source — install either name to get the same package, and the
-> CLI exposes both `cfafi` and `cultureflare` commands as aliases.
+> ⚠️ **`cfafi` is now `cultureflare` on PyPI.** v0.2.2 was the final
+> release under the `cfafi` distribution name; install
+> [`cultureflare`](https://pypi.org/project/cultureflare/) for ongoing
+> updates. The `cfafi` CLI command stays as an alias and the Python
+> module is still `import cfafi`, so existing scripts keep working.
 
 Agent-first CLI for managing CloudFlare state in the AgentCulture OSS
 org. Action-oriented (commands describe operator intent, not REST
@@ -14,15 +14,17 @@ endpoints), idempotent, dry-run by default, agent-readable markdown +
 ## Install
 
 ```bash
-# Preferred (canonical name going forward):
 uv tool install cultureflare
-
-# Equivalent — installs the same package, deprecated:
-uv tool install cfafi
 ```
 
-Either install gives you both `cultureflare` and `cfafi` on the PATH;
-they're aliases for the same entry point.
+You get both `cultureflare` and `cfafi` on the PATH; they're aliases
+for the same entry point.
+
+> If you previously ran `uv tool install cfafi`: `cfafi` 0.2.2 is the
+> final release under that name. Switch to
+> `uv tool install cultureflare` (or `uv tool upgrade --reinstall cfafi`
+> won't help — there's nothing newer there). Both CLI commands keep
+> working after the swap.
 
 ```bash
 cultureflare --version
