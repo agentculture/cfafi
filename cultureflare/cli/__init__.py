@@ -1,0 +1,129 @@
+"""Top-level CLI entry point.
+
+Noun-based subcommands register here. All errors route through
+:mod:`cultureflare.cli._output` — no Python traceback ever reaches stderr.
+Mirrors afi-cli's parser pattern (see /home/spark/git/afi-cli/afi/cli).
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+from cultureflare import __version__
+from cultureflare.cli._errors import EXIT_USER_ERROR, CfafiError
+from cultureflare.cli._output import emit_error
+
+_ALIASES = ("cfafi", "cultureflare")
+_CANONICAL_PROG = "cultureflare"
+
+
+class _CfafiArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose .error() routes through emit_error.
+
+    Argparse's default error handler prints ``prog: error: <msg>`` to
+    stderr with exit code 2 — bypassing our structured format. This
+    subclass emits the canonical ``error:`` / ``hint:`` shape.
+
+    The ``--json`` flag is recognised before ``parse_args`` runs by
+    :func:`_argv_has_json` so that parse-time errors honour JSON mode.
+    """
+
+    _json_hint: bool = False
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        err = CfafiError(
+            code=EXIT_USER_ERROR,
+            message=message,
+            remediation=f"run '{self.prog} --help' for valid arguments",
+        )
+        emit_error(err, json_mode=type(self)._json_hint)
+        raise SystemExit(err.code)
+
+
+def _argv_has_json(argv: list[str] | None) -> bool:
+    tokens = argv if argv is not None else sys.argv[1:]
+    return any(t == "--json" or t.startswith("--json=") for t in tokens)
+
+
+def _resolve_prog() -> str:
+    """Stable program name for argparse's `prog`.
+
+    Maps sys.argv[0]'s basename to one of the canonical CLI names.
+    Real console-script invocations as `cfafi` or `cultureflare` use
+    that name; everything else (`python -m cfafi`, whose argv[0] is
+    `__main__.py`; `pytest` driving `main([...])`; programmatic
+    callers with empty argv) falls back to canonical "cultureflare".
+    Keeps help / usage / version output stable regardless of how the
+    caller arrived here.
+    """
+    if sys.argv and sys.argv[0]:
+        prog = os.path.basename(sys.argv[0])
+        if prog in _ALIASES:
+            return prog
+    return _CANONICAL_PROG
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    # Deferred imports keep cli import-side effects tight.
+    from cultureflare.cli._commands import dns as _dns
+    from cultureflare.cli._commands import explain as _explain
+    from cultureflare.cli._commands import learn as _learn
+    from cultureflare.cli._commands import remote_login as _remote_login
+    from cultureflare.cli._commands import whoami as _whoami
+    from cultureflare.cli._commands import zones as _zones
+
+    parser = _CfafiArgumentParser(
+        prog=_resolve_prog(),
+        description="CloudFlare Agent First Interface (cfafi / cultureflare)",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
+    sub = parser.add_subparsers(dest="command", parser_class=_CfafiArgumentParser)
+
+    # Globals
+    _learn.register(sub)
+    _explain.register(sub)
+    _whoami.register(sub)
+    # Noun groups
+    _zones.register(sub)
+    _dns.register(sub)
+    _remote_login.register(sub)
+
+    return parser
+
+
+def _dispatch(args: argparse.Namespace) -> int:
+    json_mode = bool(getattr(args, "json", False))
+    try:
+        rc = args.func(args)
+    except CfafiError as err:
+        emit_error(err, json_mode=json_mode)
+        return err.code
+    except Exception as err:  # noqa: BLE001 - wrap so no traceback leaks
+        wrapped = CfafiError(
+            code=EXIT_USER_ERROR,
+            message=f"unexpected: {err.__class__.__name__}: {err}",
+            remediation="file a bug at https://github.com/agentculture/cultureflare/issues",
+        )
+        emit_error(wrapped, json_mode=json_mode)
+        return wrapped.code
+    return rc if rc is not None else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    _CfafiArgumentParser._json_hint = _argv_has_json(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        return 0
+    return _dispatch(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

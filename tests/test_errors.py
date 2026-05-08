@@ -1,8 +1,8 @@
-"""Tests for cfafi.cli._errors."""
+"""Tests for cultureflare.cli._errors."""
 
 import pytest
 
-from cfafi.cli._errors import (
+from cultureflare.cli._errors import (
     EXIT_API,
     EXIT_AUTH,
     EXIT_ENV_ERROR,

@@ -1,9 +1,9 @@
-"""Tests for the cfafi._remote_login orchestrator."""
+"""Tests for the cultureflare._remote_login orchestrator."""
 
 import pytest
 
-from cfafi._remote_login import setup, show, teardown
-from cfafi._remote_login._common import (
+from cultureflare._remote_login import setup, show, teardown
+from cultureflare._remote_login._common import (
     Context, derive_names, SetupResult, ShowResult, TeardownResult,
 )
 
@@ -229,7 +229,7 @@ def test_setup_raises_clean_error_when_zt_not_enabled(http_stub):
     # error into None; setup() should then raise its friendlier
     # EXIT_USER_ERROR pointing at the dashboard URL rather than
     # bubbling CF's raw "Access is not enabled" message.
-    from cfafi.cli._errors import EXIT_API, EXIT_USER_ERROR, CfafiError
+    from cultureflare.cli._errors import EXIT_API, EXIT_USER_ERROR, CfafiError
 
     http_stub.set(
         "GET", "/accounts/acc-1/access/organizations",
@@ -257,7 +257,7 @@ def test_show_short_circuits_access_endpoints_when_zt_disabled(http_stub):
     # qodo Bug #2: when find_org returns None, show() must NOT call
     # /access/apps or /access/service_tokens — those would 9999 too.
     # Tunnel and DNS are still queried (not Access-scoped).
-    from cfafi.cli._errors import EXIT_API, CfafiError
+    from cultureflare.cli._errors import EXIT_API, CfafiError
 
     http_stub.set(
         "GET", "/accounts/acc-1/access/organizations",

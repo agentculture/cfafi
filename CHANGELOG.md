@@ -4,6 +4,14 @@ All notable changes to this project will be documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-08
+
+### Changed
+
+- Renamed Python module dir `cfafi/` → `cultureflare/`, and Claude skills `.claude/skills/cfafi*` → `.claude/skills/cultureflare*`.
+- Added a `cfafi/__init__.py` shim package + `.claude/skills/cfafi*` symlinks so legacy paths and `import cfafi` consumers keep working.
+- Updated User-Agent, DNS-record default `comment`, repo URLs, workflow filters, lint targets, and SKILL.md frontmatter.
+
 ## [0.3.0] - 2026-05-08
 
 ### Changed

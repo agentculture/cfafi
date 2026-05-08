@@ -1,9 +1,9 @@
-"""Tests for cfafi._remote_login._access_org."""
+"""Tests for cultureflare._remote_login._access_org."""
 
 import pytest
 
-from cfafi._remote_login._access_org import find_org, ensure_org
-from cfafi.cli._errors import CfafiError, EXIT_API, EXIT_AUTH, EXIT_USER_ERROR
+from cultureflare._remote_login._access_org import find_org, ensure_org
+from cultureflare.cli._errors import CfafiError, EXIT_API, EXIT_AUTH, EXIT_USER_ERROR
 
 
 def test_find_org_returns_auth_domain_when_present(http_stub):

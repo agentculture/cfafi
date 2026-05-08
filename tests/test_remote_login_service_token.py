@@ -1,11 +1,11 @@
-"""Tests for cfafi._remote_login._service_token."""
+"""Tests for cultureflare._remote_login._service_token."""
 
 import pytest
 
-from cfafi._remote_login._service_token import (
+from cultureflare._remote_login._service_token import (
     find_service_token, ensure_service_token, delete_service_token,
 )
-from cfafi.cli._errors import CfafiError, EXIT_USER_ERROR
+from cultureflare.cli._errors import CfafiError, EXIT_USER_ERROR
 
 
 def _list_envelope(*tokens):

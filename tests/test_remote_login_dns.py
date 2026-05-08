@@ -1,9 +1,9 @@
-"""Tests for cfafi._remote_login._dns."""
+"""Tests for cultureflare._remote_login._dns."""
 
 import pytest
 
-from cfafi._remote_login._dns import find_cname, ensure_cname, delete_cname
-from cfafi.cli._errors import CfafiError, EXIT_USER_ERROR
+from cultureflare._remote_login._dns import find_cname, ensure_cname, delete_cname
+from cultureflare.cli._errors import CfafiError, EXIT_USER_ERROR
 
 
 def _list_envelope(*records):

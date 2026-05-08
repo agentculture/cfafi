@@ -1,8 +1,8 @@
-"""Tests for cfafi._remote_login._tunnel."""
+"""Tests for cultureflare._remote_login._tunnel."""
 
 import pytest
 
-from cfafi._remote_login._tunnel import (
+from cultureflare._remote_login._tunnel import (
     find_tunnel, ensure_tunnel, get_tunnel_token, delete_tunnel,
 )
 

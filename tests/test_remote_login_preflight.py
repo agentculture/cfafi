@@ -1,9 +1,9 @@
-"""Tests for cfafi._remote_login._preflight."""
+"""Tests for cultureflare._remote_login._preflight."""
 
 import pytest
 
-from cfafi._remote_login._preflight import check_token_alive
-from cfafi.cli._errors import CfafiError, EXIT_AUTH
+from cultureflare._remote_login._preflight import check_token_alive
+from cultureflare.cli._errors import CfafiError, EXIT_AUTH
 
 
 def _verify_response(*, status: str = "active") -> dict:

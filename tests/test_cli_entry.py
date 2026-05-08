@@ -1,12 +1,12 @@
-"""Tests for cfafi.cli entry-point plumbing (argparse, error routing, --version)."""
+"""Tests for cultureflare.cli entry-point plumbing (argparse, error routing, --version)."""
 
 import json
 import sys
 
 import pytest
 
-from cfafi import __version__
-from cfafi.cli import main
+from cultureflare import __version__
+from cultureflare.cli import main
 
 
 def test_main_prints_help_when_no_command(capsys):

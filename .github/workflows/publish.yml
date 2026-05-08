@@ -5,20 +5,23 @@ on:
     branches: [main]
     paths:
       - "pyproject.toml"
+      - "cultureflare/**"
       - "cfafi/**"
   pull_request:
     branches: [main]
     paths:
       - "pyproject.toml"
+      - "cultureflare/**"
       - "cfafi/**"
 
 # This workflow publishes the `cultureflare` PyPI distribution. The
-# legacy `cfafi` distribution name was frozen at v0.2.2 (the final
-# dual-publish release in PR #25); from 0.3.0 onward there's only one
-# wheel per version and it ships under `cultureflare`. The Python
-# module dir stays `cfafi/` and the `cfafi` console-script alias stays
-# alongside `cultureflare`. See docs/SETUP.md § 8 for Trusted
-# Publisher setup.
+# legacy `cfafi` distribution name was frozen at v0.2.2; from 0.3.0
+# onward there's one wheel per version, shipped under `cultureflare`.
+# The wheel ALSO ships a small `cfafi/` shim package that aliases
+# every cultureflare submodule into `sys.modules["cfafi.*"]`, so
+# existing consumers who still type `import cfafi` keep working.
+# The `cfafi` console-script alias stays alongside `cultureflare`.
+# See docs/SETUP.md § 8 for Trusted Publisher setup.
 
 jobs:
   test:

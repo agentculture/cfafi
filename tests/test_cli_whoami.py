@@ -2,8 +2,8 @@
 
 import json
 
-from cfafi.cli import main
-from cfafi.cli._errors import EXIT_AUTH, CfafiError
+from cultureflare.cli import main
+from cultureflare.cli._errors import EXIT_AUTH, CfafiError
 
 
 def test_whoami_markdown(http_stub, capsys):

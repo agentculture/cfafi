@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cfafi import _api
+from cultureflare import _api
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -18,7 +18,7 @@ def load_fixture(name: str) -> dict:
 
 
 class Stub:
-    """Controllable replacement for cfafi._api.http_request.
+    """Controllable replacement for cultureflare._api.http_request.
 
     - ``set(method, path, response_or_error)`` programs a fallback keyed
       by (method, path). Any query string is ignored for matching.

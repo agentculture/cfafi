@@ -2,7 +2,7 @@
 
 import json
 
-from cfafi.cli import main
+from cultureflare.cli import main
 
 
 def test_zones_list_markdown(http_stub, capsys):

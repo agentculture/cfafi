@@ -1,4 +1,4 @@
-"""Tests for cfafi._api."""
+"""Tests for cultureflare._api."""
 
 import io
 import json
@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cfafi._api import CF_API_BASE, http_request, paginate
-from cfafi.cli._errors import EXIT_API, EXIT_AUTH, CfafiError
+from cultureflare._api import CF_API_BASE, http_request, paginate
+from cultureflare.cli._errors import EXIT_API, EXIT_AUTH, CfafiError
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +26,7 @@ def _ok_resp(payload):
 
 def test_http_request_sends_bearer_token_and_parses_json():
     payload = {"success": True, "result": {"id": "abc"}}
-    with patch("cfafi._api.urllib.request.urlopen", return_value=_ok_resp(payload)) as mock:
+    with patch("cultureflare._api.urllib.request.urlopen", return_value=_ok_resp(payload)) as mock:
         out = http_request("GET", "/user/tokens/verify")
     assert out == payload
     req = mock.call_args[0][0]
@@ -36,14 +36,14 @@ def test_http_request_sends_bearer_token_and_parses_json():
 
 
 def test_http_request_encodes_query_string():
-    with patch("cfafi._api.urllib.request.urlopen", return_value=_ok_resp({"success": True})) as mock:  # noqa: E501
+    with patch("cultureflare._api.urllib.request.urlopen", return_value=_ok_resp({"success": True})) as mock:  # noqa: E501
         http_request("GET", "/zones", query={"name": "culture.dev", "page": 2})
     url = mock.call_args[0][0].full_url
     assert "name=culture.dev" in url and "page=2" in url
 
 
 def test_http_request_sends_json_payload_on_post():
-    with patch("cfafi._api.urllib.request.urlopen", return_value=_ok_resp({"success": True})) as mock:  # noqa: E501
+    with patch("cultureflare._api.urllib.request.urlopen", return_value=_ok_resp({"success": True})) as mock:  # noqa: E501
         http_request("POST", "/zones/zid/dns_records", payload={"type": "A", "name": "x"})
     req = mock.call_args[0][0]
     assert req.get_method() == "POST"
@@ -56,7 +56,7 @@ def test_http_request_raises_cfafi_auth_error_on_401():
     http_err = urllib.error.HTTPError(
         url="x", code=401, msg="Unauthorized", hdrs=None, fp=io.BytesIO(err_body.encode()),
     )
-    with patch("cfafi._api.urllib.request.urlopen", side_effect=http_err):
+    with patch("cultureflare._api.urllib.request.urlopen", side_effect=http_err):
         with pytest.raises(CfafiError) as excinfo:
             http_request("GET", "/zones")
     assert excinfo.value.code == EXIT_AUTH
@@ -68,7 +68,7 @@ def test_http_request_raises_cfafi_api_error_on_400():
     http_err = urllib.error.HTTPError(
         url="x", code=400, msg="Bad Request", hdrs=None, fp=io.BytesIO(err_body.encode()),
     )
-    with patch("cfafi._api.urllib.request.urlopen", side_effect=http_err):
+    with patch("cultureflare._api.urllib.request.urlopen", side_effect=http_err):
         with pytest.raises(CfafiError) as excinfo:
             http_request("GET", "/zones")
     assert excinfo.value.code == EXIT_API
@@ -90,7 +90,7 @@ def test_paginate_walks_until_total_pages():
             "result_info": {"page": 2, "total_pages": 2},
         }
 
-    with patch("cfafi._api.http_request", side_effect=fake):
+    with patch("cultureflare._api.http_request", side_effect=fake):
         rows = list(paginate("/zones"))
     assert [r["id"] for r in rows] == ["a", "b", "c"]
     assert [c.get("page") for c in calls] == [1, 2]
@@ -100,7 +100,7 @@ def test_paginate_single_page():
     def fake(method, path, *, payload=None, query=None):
         return {"result": [{"id": "only"}], "result_info": {"page": 1, "total_pages": 1}}
 
-    with patch("cfafi._api.http_request", side_effect=fake):
+    with patch("cultureflare._api.http_request", side_effect=fake):
         rows = list(paginate("/zones"))
     assert [r["id"] for r in rows] == ["only"]
 
@@ -109,7 +109,7 @@ def test_paginate_empty_result():
     def fake(method, path, *, payload=None, query=None):
         return {"result": [], "result_info": {"page": 1, "total_pages": 1}}
 
-    with patch("cfafi._api.http_request", side_effect=fake):
+    with patch("cultureflare._api.http_request", side_effect=fake):
         assert list(paginate("/zones")) == []
 
 
@@ -120,7 +120,7 @@ def test_paginate_preserves_caller_query():
         calls.append(dict(query or {}))
         return {"result": [], "result_info": {"page": 1, "total_pages": 1}}
 
-    with patch("cfafi._api.http_request", side_effect=fake):
+    with patch("cultureflare._api.http_request", side_effect=fake):
         list(paginate("/zones/z/dns_records", query={"type": "A"}))
     assert calls[0]["type"] == "A"
     assert calls[0]["page"] == 1
@@ -132,7 +132,7 @@ def test_http_request_wraps_transport_failure_as_api_error():
     at network connectivity, not an auth error or a python traceback.
     """
     transport_err = urllib.error.URLError("Name or service not known")
-    with patch("cfafi._api.urllib.request.urlopen", side_effect=transport_err):
+    with patch("cultureflare._api.urllib.request.urlopen", side_effect=transport_err):
         with pytest.raises(CfafiError) as excinfo:
             http_request("GET", "/zones")
     assert excinfo.value.code == EXIT_API
@@ -150,7 +150,7 @@ def test_http_request_handles_non_json_error_body():
     http_err = urllib.error.HTTPError(
         url="x", code=503, msg="Service Unavailable", hdrs=None, fp=io.BytesIO(html_body),
     )
-    with patch("cfafi._api.urllib.request.urlopen", side_effect=http_err):
+    with patch("cultureflare._api.urllib.request.urlopen", side_effect=http_err):
         with pytest.raises(CfafiError) as excinfo:
             http_request("GET", "/zones")
     assert excinfo.value.code == EXIT_API

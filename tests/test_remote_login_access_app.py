@@ -1,6 +1,6 @@
-"""Tests for cfafi._remote_login._access_app."""
+"""Tests for cultureflare._remote_login._access_app."""
 
-from cfafi._remote_login._access_app import find_app, ensure_app, delete_app
+from cultureflare._remote_login._access_app import find_app, ensure_app, delete_app
 
 
 def _list_envelope(*apps):

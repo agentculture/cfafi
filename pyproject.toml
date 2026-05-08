@@ -1,6 +1,6 @@
 [project]
 name = "cultureflare"
-version = "0.3.0"
+version = "0.3.1"
 description = "CloudFlare Agent First Interface — agent-first CLI for CloudFlare management in the AgentCulture org."
 readme = "README.md"
 license = "MIT"
@@ -16,19 +16,23 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/agentculture/cfafi"
-Issues = "https://github.com/agentculture/cfafi/issues"
+Homepage = "https://github.com/agentculture/cultureflare"
+Issues = "https://github.com/agentculture/cultureflare/issues"
 
 [project.scripts]
-cfafi = "cfafi.cli:main"
-cultureflare = "cfafi.cli:main"
+cfafi = "cultureflare.cli:main"
+cultureflare = "cultureflare.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["cfafi"]
+# Both names ship in the wheel: `cultureflare` is the real package
+# directory; `cfafi` is a relative symlink in the repo and hatchling
+# packages the dereferenced files under the legacy name as well, so
+# `import cfafi` keeps working post-install.
+packages = ["cultureflare", "cfafi"]
 
 [dependency-groups]
 dev = [
@@ -47,8 +51,8 @@ dev = [
 ]
 
 [tool.coverage.run]
-source = ["cfafi"]
-omit = ["cfafi/__pycache__/*"]
+source = ["cultureflare"]
+omit = ["cultureflare/__pycache__/*"]
 
 [tool.coverage.report]
 fail_under = 70
@@ -62,7 +66,7 @@ exclude_lines = [
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["cfafi"]
+known_first_party = ["cultureflare"]
 
 [tool.black]
 line-length = 100
