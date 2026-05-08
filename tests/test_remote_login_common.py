@@ -71,3 +71,47 @@ def test_resolve_zone_raises_when_no_zone_matches(http_stub):
     with pytest.raises(CfafiError) as exc:
         resolve_zone("irc.example.com")
     assert "no zone in this account" in exc.value.message.lower()
+
+
+from cultureflare._remote_login._common import SetupResult, ShowResult
+
+
+def test_setup_result_has_sealed_in_default_empty():
+    r = SetupResult(
+        team_domain="ex.cloudflareaccess.com",
+        tunnel_id="t-1", tunnel_name="app-example-com",
+        tunnel_token="raw-token",
+        dns_record_id="d-1", dns_target="t-1.cfargotunnel.com",
+        access_app_id="a-1",
+        policy_id="p-1", policy_emails=["x@y"], policy_domains=[],
+        service_token_client_id=None, service_token_client_secret=None,
+        steps=[],
+    )
+    assert r.sealed_in == {}
+
+
+def test_setup_result_accepts_sealed_in():
+    r = SetupResult(
+        team_domain="ex.cloudflareaccess.com",
+        tunnel_id="t-1", tunnel_name="app-example-com",
+        tunnel_token=None,
+        dns_record_id="d-1", dns_target="t-1.cfargotunnel.com",
+        access_app_id="a-1",
+        policy_id="p-1", policy_emails=["x@y"], policy_domains=[],
+        service_token_client_id="cid", service_token_client_secret=None,
+        steps=[],
+        sealed_in={
+            "tunnel_token": "shushu/alice/CULTUREFLARE_X_TUNNEL_TOKEN",
+            "service_token_client_secret": "shushu/alice/CULTUREFLARE_X_SVC_SECRET",
+        },
+    )
+    assert r.tunnel_token is None
+    assert r.sealed_in["tunnel_token"].startswith("shushu/alice/")
+
+
+def test_show_result_has_sealed_in_status_default_empty():
+    r = ShowResult(
+        team_domain=None, tunnel=None, dns=None,
+        access_app=None, policy=None, service_token=None,
+    )
+    assert r.sealed_in_status == {}

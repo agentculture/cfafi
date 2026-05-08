@@ -4,6 +4,17 @@ All notable changes to this project will be documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-08
+
+### Added
+
+- `cultureflare remote-login --shushu[=USER]` flag — pipes tunnel_token + service_token client_secret directly into a `shushu set --hidden` subprocess so the secrets never cross stdout, agent harness, or operator terminal. Cross-user deposit via sudo. Markdown / JSON output replaces secret-bearing fields with `<sealed: shushu/USER/NAME>` markers; show probes shushu for presence; teardown deletes the entries.
+
+### Changed
+
+- `SetupResult.tunnel_token` is now `str | None`; gains `sealed_in: dict[str, str]`. `ShowResult` gains `sealed_in_status: dict[str, dict | None]`. Defaults preserve existing behaviour.
+- `probe()` parsing was corrected to match shushu 0.8.0 wire format (flat dict with `ok` sentinel, no nested `result`).
+
 ## [0.3.1] - 2026-05-08
 
 ### Changed

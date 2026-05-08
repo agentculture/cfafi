@@ -72,3 +72,29 @@ def test_python_m_cfafi_runs_cli():
     # _resolve_prog falls back to canonical "cultureflare" when argv[0]
     # is `__main__.py` (the python -m … invocation).
     assert "cultureflare" in result.stdout
+
+
+def test_cfafi_secrets_types_aliased_to_cultureflare():
+    import cfafi._secrets._types as legacy
+    import cultureflare._secrets._types as canonical
+    assert legacy is canonical
+    assert legacy.ShushuTarget is canonical.ShushuTarget
+
+
+def test_cfafi_secrets_shushu_sink_aliased():
+    import cfafi._secrets._shushu_sink as legacy
+    import cultureflare._secrets._shushu_sink as canonical
+    assert legacy is canonical
+
+
+def test_cfafi_remote_login_seal_plan_aliased():
+    from cfafi._remote_login._seal_plan import derive_seal_plan as legacy
+    from cultureflare._remote_login._seal_plan import derive_seal_plan as canonical
+    assert legacy is canonical
+
+
+def test_setup_without_shushu_flag_returns_secrets_in_clear():
+    """Regression guard: opt-in only. Default never seals."""
+    from cultureflare._remote_login._seal_plan import derive_seal_plan
+    plan = derive_seal_plan(hostname="app.example.com", shushu_arg=None)
+    assert plan.enabled is False

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -55,12 +55,12 @@ class StepRecord:
     detail: str  # human-readable, no secrets
 
 
-@dataclass
+@dataclass(frozen=True)
 class SetupResult:
     team_domain: str | None
     tunnel_id: str
     tunnel_name: str
-    tunnel_token: str
+    tunnel_token: str | None
     dns_record_id: str
     dns_target: str
     access_app_id: str
@@ -70,9 +70,10 @@ class SetupResult:
     service_token_client_id: str | None
     service_token_client_secret: str | None
     steps: list[StepRecord]
+    sealed_in: dict[str, str] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ShowResult:
     team_domain: str | None
     tunnel: dict | None
@@ -80,6 +81,7 @@ class ShowResult:
     access_app: dict | None
     policy: dict | None
     service_token: dict | None
+    sealed_in_status: dict[str, dict | None] = field(default_factory=dict)
 
 
 @dataclass

@@ -7,6 +7,12 @@ from cultureflare._remote_login._common import (
 )
 
 
+def _seal_or_value(result: SetupResult, key: str, fallback: str | None) -> str:
+    if key in result.sealed_in:
+        return f"<sealed: {result.sealed_in[key]}>"
+    return str(fallback) if fallback is not None else "(none)"
+
+
 def render_setup_markdown(result: SetupResult, *, hostname: str) -> str:
     lines: list[str] = []
     lines.append(f"## Remote login set up — {hostname}")
@@ -14,7 +20,9 @@ def render_setup_markdown(result: SetupResult, *, hostname: str) -> str:
     lines.append(f"- **CF_TEAM_DOMAIN:** {result.team_domain or '(not set)'}")
     lines.append(f"- **TUNNEL_NAME:** {result.tunnel_name}")
     lines.append(f"- **TUNNEL_ID:** {result.tunnel_id}")
-    lines.append(f"- **TUNNEL_TOKEN:** {result.tunnel_token}")
+    lines.append(
+        f"- **TUNNEL_TOKEN:** {_seal_or_value(result, 'tunnel_token', result.tunnel_token)}"
+    )
     lines.append(
         f"- **DNS:** CNAME {hostname} → {result.dns_target} (proxied)"
     )
@@ -29,11 +37,14 @@ def render_setup_markdown(result: SetupResult, *, hostname: str) -> str:
         lines.append(
             f"- **SERVICE_TOKEN_CLIENT_ID:** {result.service_token_client_id}"
         )
-    if result.service_token_client_secret is not None:
-        lines.append(
-            f"- **SERVICE_TOKEN_CLIENT_SECRET:** "
-            f"{result.service_token_client_secret}"
-        )
+        if (
+            "service_token_client_secret" in result.sealed_in
+            or result.service_token_client_secret is not None
+        ):
+            lines.append(
+                f"- **SERVICE_TOKEN_CLIENT_SECRET:** "
+                f"{_seal_or_value(result, 'service_token_client_secret', result.service_token_client_secret)}"
+            )
     lines.append("")
     lines.append("## Steps")
     for i, step in enumerate(result.steps, start=1):
@@ -62,6 +73,7 @@ def render_setup_json(result: SetupResult, *, hostname: str) -> dict:
             },
             "service_token_client_id": result.service_token_client_id,
             "service_token_client_secret": result.service_token_client_secret,
+            "sealed_in": dict(result.sealed_in),
             "steps": [
                 {"name": s.name, "action": s.action, "detail": s.detail}
                 for s in result.steps
@@ -79,6 +91,9 @@ def render_setup_dryrun_markdown(
     domains: list[str],
     with_service_token: bool,
     session_duration: str,
+    seal_user: str | None = None,
+    seal_tunnel_name: str | None = None,
+    seal_svc_name: str | None = None,
 ) -> str:
     lines: list[str] = []
     lines.append("**Dry-run — no changes applied**")
@@ -100,50 +115,86 @@ def render_setup_dryrun_markdown(
     lines.append(f"5. ensure allow-policy ({'; '.join(policy_parts)})")
     if with_service_token:
         lines.append("6. ensure service-token (one-shot secret)")
+    if seal_tunnel_name is not None:
+        u = seal_user or "<self>"
+        lines.append(f"7. seal tunnel_token into shushu/{u}/{seal_tunnel_name}")
+        if with_service_token and seal_svc_name is not None:
+            lines.append(
+                f"8. seal service-token client_secret into shushu/{u}/{seal_svc_name}"
+            )
     lines.append("")
     lines.append("Pass --apply to commit.")
     return "\n".join(lines) + "\n"
 
 
+def _row_tunnel(tunnel: dict | None) -> str:
+    if tunnel is None:
+        return "- **tunnel:** (not found)"
+    return f"- **tunnel:** {tunnel.get('name')} (id={tunnel.get('id')})"
+
+
+def _row_dns(dns: dict | None, hostname: str) -> str:
+    if dns is None:
+        return "- **dns:** (not found)"
+    proxied = bool(dns.get("proxied"))
+    marker = "✓" if proxied else "⚠ (unproxied — Access bypassed)"
+    label = "proxied" if proxied else "unproxied"
+    return (
+        f"- **dns:** CNAME {hostname} → {dns.get('content')} "
+        f"({label}) {marker}"
+    )
+
+
+def _row_access_app(app: dict | None) -> str:
+    body = f"id={app['id']}" if app else "(not found)"
+    return f"- **access-app:** {body}"
+
+
+def _row_policies(policy: dict | None) -> str:
+    body = "1 allow rule" if policy else "(not found)"
+    return f"- **policies:** {body}"
+
+
+def _row_service_token(svc: dict | None) -> str:
+    if svc is None:
+        return "- **service-token:** (not found)"
+    return (
+        f"- **service-token:** {svc.get('name')} "
+        f"(id={svc.get('id')}, secret not retrievable)"
+    )
+
+
+def _row_sealed_status(key: str, status: dict | None) -> str:
+    if status is None:
+        return f"  - {key}: ?? (shushu not installed)"
+    state = "present" if status.get("present") else "absent"
+    src = status.get("source")
+    tail = f" (source: {src})" if src else ""
+    return f"  - {key}: {status.get('name')} — {state}{tail}"
+
+
+def _rows_sealed_in_status(
+    status_map: dict[str, dict | None],
+) -> list[str]:
+    if not status_map:
+        return []
+    rows = ["- **sealed-in:**"]
+    rows.extend(_row_sealed_status(k, v) for k, v in status_map.items())
+    return rows
+
+
 def render_show_markdown(result: ShowResult, *, hostname: str) -> str:
-    lines: list[str] = []
-    lines.append(f"## Remote login state — {hostname}")
-    lines.append("")
-    lines.append(
-        f"- **zero-trust-org:** {result.team_domain or '(not found)'}"
-    )
-    if result.tunnel is not None:
-        lines.append(
-            f"- **tunnel:** {result.tunnel.get('name')} "
-            f"(id={result.tunnel.get('id')})"
-        )
-    else:
-        lines.append("- **tunnel:** (not found)")
-    if result.dns is not None:
-        proxied = bool(result.dns.get("proxied"))
-        marker = "✓" if proxied else "⚠ (unproxied — Access bypassed)"
-        lines.append(
-            f"- **dns:** CNAME {hostname} → {result.dns.get('content')} "
-            f"({'proxied' if proxied else 'unproxied'}) {marker}"
-        )
-    else:
-        lines.append("- **dns:** (not found)")
-    lines.append(
-        f"- **access-app:** "
-        f"{'id=' + result.access_app['id'] if result.access_app else '(not found)'}"
-    )
-    lines.append(
-        f"- **policies:** "
-        f"{'1 allow rule' if result.policy else '(not found)'}"
-    )
-    if result.service_token is not None:
-        lines.append(
-            f"- **service-token:** {result.service_token.get('name')} "
-            f"(id={result.service_token.get('id')}, "
-            f"secret not retrievable)"
-        )
-    else:
-        lines.append("- **service-token:** (not found)")
+    lines: list[str] = [
+        f"## Remote login state — {hostname}",
+        "",
+        f"- **zero-trust-org:** {result.team_domain or '(not found)'}",
+        _row_tunnel(result.tunnel),
+        _row_dns(result.dns, hostname),
+        _row_access_app(result.access_app),
+        _row_policies(result.policy),
+        _row_service_token(result.service_token),
+    ]
+    lines.extend(_rows_sealed_in_status(result.sealed_in_status))
     return "\n".join(lines) + "\n"
 
 
@@ -158,6 +209,7 @@ def render_show_json(result: ShowResult, *, hostname: str) -> dict:
             "access_app": result.access_app,
             "policy": result.policy,
             "service_token": result.service_token,
+            "sealed_in_status": dict(result.sealed_in_status),
         },
     }
 
