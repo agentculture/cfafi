@@ -28,6 +28,7 @@
 #   help                    print this message
 
 set -euo pipefail
+shopt -s inherit_errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

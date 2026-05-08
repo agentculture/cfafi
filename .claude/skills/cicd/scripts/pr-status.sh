@@ -17,6 +17,7 @@
 # Requires: gh, jq, curl, python3.
 
 set -euo pipefail
+shopt -s inherit_errexit
 
 REPO=""
 SONAR_KEY=""
@@ -95,36 +96,55 @@ THREADS_JSON=$(gh api graphql -f query="
   }
 }" --jq '.data.repository.pullRequest.reviewThreads.nodes')
 
-INLINE_TOTAL=$(echo "$THREADS_JSON" | jq 'length')
-INLINE_RESOLVED=$(echo "$THREADS_JSON" | jq '[.[] | select(.isResolved)] | length')
+INLINE_TOTAL=$(printf '%s' "$THREADS_JSON" | jq 'length')
+INLINE_RESOLVED=$(printf '%s' "$THREADS_JSON" | jq '[.[] | select(.isResolved)] | length')
 INLINE_PENDING=$((INLINE_TOTAL - INLINE_RESOLVED))
 
 # Per-bot inline counts.
-COPILOT_INLINE=$(echo "$THREADS_JSON" | jq '[.[] | select((.comments.nodes[0].author.login // "") | startswith("Copilot"))] | length')
-QODO_INLINE=$(echo "$THREADS_JSON" | jq '[.[] | select((.comments.nodes[0].author.login // "") | startswith("qodo"))] | length')
+COPILOT_INLINE=$(printf '%s' "$THREADS_JSON" | jq '[.[] | select((.comments.nodes[0].author.login // "") | startswith("Copilot"))] | length')
+QODO_INLINE=$(printf '%s' "$THREADS_JSON" | jq '[.[] | select((.comments.nodes[0].author.login // "") | startswith("qodo"))] | length')
 
 # Issue-level comments (qodo summary, sonarcloud quality-gate body, cf-pages preview, etc.).
 # Skip --paginate to avoid array concatenation; per_page=100 covers typical PRs.
 ISSUE=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100")
-QODO_ISSUE=$(echo "$ISSUE" | jq '[.[] | select((.user.login // "") | startswith("qodo"))] | length')
-CFPAGES_ISSUE=$(echo "$ISSUE" | jq '[.[] | select((.user.login // "") | test("cloudflare"))] | length')
+QODO_ISSUE=$(printf '%s' "$ISSUE" | jq '[.[] | select((.user.login // "") | startswith("qodo"))] | length')
+CFPAGES_ISSUE=$(printf '%s' "$ISSUE" | jq '[.[] | select((.user.login // "") | test("cloudflare"))] | length')
 COPILOT_TOPLEVEL=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews?per_page=100" \
     | jq '[.[] | select((.user.login // "") | startswith("copilot")) | select((.body // "") != "")] | length')
 
 # Cloudflare deploy URL hidden in issue-comment bodies (look for pages.dev).
-CF_URL=$(echo "$ISSUE" | jq -r '[.[].body // "" | scan("https?://[a-z0-9.-]+\\.pages\\.dev[^\\s)\"<]*")] | first // ""')
+CF_URL=$(printf '%s' "$ISSUE" | jq -r '[.[].body // "" | scan("https?://[a-z0-9.-]+\\.pages\\.dev[^\\s)\"<]*")] | first // ""')
 
 printf "  %-12s %s\n"  "Copilot"     "$([[ "$COPILOT_TOPLEVEL" -gt 0 || "$COPILOT_INLINE" -gt 0 ]] && echo "✅ overview×$COPILOT_TOPLEVEL, inline×$COPILOT_INLINE" || echo "— no posts yet")"
 printf "  %-12s %s\n"  "qodo"        "$([[ "$QODO_ISSUE" -gt 0 || "$QODO_INLINE" -gt 0 ]] && echo "✅ summary×$QODO_ISSUE, inline×$QODO_INLINE" || echo "— no posts yet")"
-# shellcheck disable=SC2015
+# shellcheck disable=SC2015 # the `A && B || C` here is a 3-state ladder (URL > comment-count > none); C never runs accidentally because both A-branches print non-empty strings
 printf "  %-12s %s\n"  "Cloudflare"  "$([[ -n "$CF_URL" ]] && echo "✅ $CF_URL" || ([[ "$CFPAGES_ISSUE" -gt 0 ]] && echo "✅ ($CFPAGES_ISSUE comments)" || echo "— no deploy preview"))"
 
 # ── 4. SonarCloud quality gate + open issues ─────────────────────────────
-SONAR_QG=$(curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${SONAR_KEY}&pullRequest=${PR_NUMBER}")
-SONAR_QG_STATUS=$(echo "$SONAR_QG" | jq -r '.projectStatus.status // "UNKNOWN"')
-SONAR_OPEN=$(curl -s "https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_KEY}&pullRequest=${PR_NUMBER}&statuses=OPEN,CONFIRMED&ps=1" \
+# Best-effort: bounded timeout + retries, URL-encoded params, never fatal.
+# When the project isn't on SonarCloud or the call fails transiently, we
+# fall through to "UNKNOWN" / 0 counts and keep going (matches the SKILL.md
+# contract that SonarCloud queries silently skip on missing projects).
+sonar_curl() {
+    # $1 = endpoint path, remaining args = key=value pairs for --data-urlencode.
+    local endpoint="$1"; shift
+    local args=()
+    local kv
+    for kv in "$@"; do
+        args+=(--data-urlencode "$kv")
+    done
+    curl -sS --get --connect-timeout 5 --max-time 15 --retry 2 --retry-delay 1 \
+        "https://sonarcloud.io/api/${endpoint}" "${args[@]}" 2>/dev/null || printf '{}'
+}
+
+SONAR_QG=$(sonar_curl qualitygates/project_status \
+    "projectKey=${SONAR_KEY}" "pullRequest=${PR_NUMBER}")
+SONAR_QG_STATUS=$(printf '%s' "$SONAR_QG" | jq -r '.projectStatus.status // "UNKNOWN"')
+SONAR_OPEN=$(sonar_curl issues/search \
+    "componentKeys=${SONAR_KEY}" "pullRequest=${PR_NUMBER}" "statuses=OPEN,CONFIRMED" "ps=1" \
     | jq -r '.total // 0')
-SONAR_HOTSPOTS=$(curl -s "https://sonarcloud.io/api/hotspots/search?projectKey=${SONAR_KEY}&pullRequest=${PR_NUMBER}&status=TO_REVIEW&ps=1" \
+SONAR_HOTSPOTS=$(sonar_curl hotspots/search \
+    "projectKey=${SONAR_KEY}" "pullRequest=${PR_NUMBER}" "status=TO_REVIEW" "ps=1" \
     | jq -r '.paging.total // 0')
 
 case "$SONAR_QG_STATUS" in
@@ -140,7 +160,8 @@ printf "  %-12s %s Quality Gate %s, %d OPEN issue(s), %d hotspot(s)\n" \
 if [[ "$SONAR_OPEN" != "0" ]]; then
     echo
     echo "  SonarCloud OPEN issues:"
-    curl -s "https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_KEY}&pullRequest=${PR_NUMBER}&statuses=OPEN,CONFIRMED&ps=20" \
+    sonar_curl issues/search \
+        "componentKeys=${SONAR_KEY}" "pullRequest=${PR_NUMBER}" "statuses=OPEN,CONFIRMED" "ps=20" \
         | jq -r '.issues[] | "    • [\(.rule)] \(.component | sub("^[^:]+:"; ""))(:\(.line // "?")) (\(.severity)) — \(.message)"'
 fi
 

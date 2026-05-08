@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Batch reply to PR review comments from JSONL on stdin.
 # Each line: {"comment_id": 123, "body": "reply text"}

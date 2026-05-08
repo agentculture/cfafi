@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Resolve the agent's nick for GitHub message signing.
 # Order: first agent's `suffix` in <repo-root>/culture.yaml,

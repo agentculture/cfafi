@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Post a cross-repo issue with auto-signature `- cultureflare (Claude)`.
 #

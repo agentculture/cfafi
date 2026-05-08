@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # poll-readiness.sh — wait until both automated PR reviewers (qodo + Copilot)
 # have posted their full reviews, OR the PR is merged/closed, OR an iteration
@@ -153,29 +154,33 @@ while (( iter < MAX_ITERS )); do
     #    the dump can flip a real review back to "placeholder-only". Using
     #    `gh api` here also avoids the SonarCloud round-trip pr-comments.sh
     #    now does on every iteration (qodo PR #17 review, perf bug).
-    issue_json=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate 2>/dev/null) || {
+    # `gh api --paginate` concatenates pages as separate JSON arrays when the
+    # response paginates, which makes the consumer-side jq compute multiple
+    # values and crash bash arithmetic under set -e. Flatten with `jq -s 'add // []'`
+    # so downstream filters always see a single array.
+    issue_json=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | jq -s 'add // []') || {
         echo "iter ${iter}: gh api issues/comments failed; will retry" >&2
         sleep "$INTERVAL"
         continue
     }
-    reviews_json=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate 2>/dev/null) || {
+    reviews_json=$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate 2>/dev/null | jq -s 'add // []') || {
         echo "iter ${iter}: gh api pulls/reviews failed; will retry" >&2
         sleep "$INTERVAL"
         continue
     }
 
-    # 3. qodo readiness — match the structural <h3>Code Review by Qodo</h3>
-    #    header, which appears only in the done-state body. Cfafi's bare-text
-    #    heuristic ("contains 'Code Review by Qodo' AND NOT 'Looking for
-    #    bugs?'") false-positives when qodo's done review *quotes* either
-    #    string while reporting bugs about polling code (PR #17 hit this).
-    #    The placeholder comment uses a different layout (no <h3> wrapper),
-    #    so the H3 marker alone is enough.
-    qodo_real=$(echo "$issue_json" | jq '[
+    # 3. qodo readiness — require the structural <h3>Code Review by Qodo</h3>
+    #    wrapper AND the absence of qodo's placeholder marker text
+    #    "An AI review agent is analyzing this pull request." The H3 wrapper
+    #    alone false-positives when the placeholder comment uses the same
+    #    structural layout (observed live on PR #31). The placeholder marker
+    #    text is canonical and never appears in a real review body.
+    qodo_real=$(printf '%s' "$issue_json" | jq '[
         .[] | select(.user.login == "qodo-code-review[bot]")
             | select(.body | contains("<h3>Code Review by Qodo</h3>"))
+            | select(.body | contains("An AI review agent is analyzing this pull request") | not)
     ] | length')
-    qodo_any=$(echo "$issue_json" | jq '[
+    qodo_any=$(printf '%s' "$issue_json" | jq '[
         .[] | select(.user.login == "qodo-code-review[bot]")
     ] | length')
     if (( qodo_real > 0 )); then
@@ -188,7 +193,7 @@ while (( iter < MAX_ITERS )); do
 
     # 4. Copilot readiness — at least one top-level review with a non-empty
     #    body. Excludes "review whose only content is inline comments".
-    copilot_count=$(echo "$reviews_json" | jq '[
+    copilot_count=$(printf '%s' "$reviews_json" | jq '[
         .[] | select((.user.login // "") | startswith("copilot"))
             | select((.body // "") != "")
     ] | length')

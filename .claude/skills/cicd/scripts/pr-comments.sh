@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Fetch and display all PR feedback in one pass:
 #   1. Inline review comments (with thread resolve status)
@@ -21,6 +22,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 PR_NUMBER="${1:?Usage: pr-comments.sh [--repo OWNER/REPO] PR_NUMBER}"
+
+# PR_NUMBER is interpolated into a GraphQL query string and into REST paths.
+# Reject anything that isn't a positive integer.
+[[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "ERROR: PR_NUMBER must be a positive integer, got: $PR_NUMBER" >&2; exit 2; }
 
 if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
@@ -105,15 +110,22 @@ echo "$REVIEWS_WITH_BODY" | jq -r '
 # ── Section 4: SonarCloud new issues ──────────────────────────────────────
 # Public API; no auth needed for public projects. Project key defaults to
 # the GitHub `<owner>_<repo>` convention; override with SONAR_PROJECT_KEY.
+# Best-effort: bounded timeout + retries, URL-encoded params, never fatal —
+# transient network failures fall through to the "section skipped" branch
+# matching the SKILL.md contract.
 SONAR_KEY="${SONAR_PROJECT_KEY:-${REPO%%/*}_${REPO##*/}}"
-SONAR_RAW=$(curl -fsS "https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_KEY}&pullRequest=${PR_NUMBER}&ps=100" 2>/dev/null || echo '{}')
+SONAR_RAW=$(curl -sS --get --connect-timeout 5 --max-time 15 --retry 2 --retry-delay 1 \
+    --data-urlencode "componentKeys=${SONAR_KEY}" \
+    --data-urlencode "pullRequest=${PR_NUMBER}" \
+    --data-urlencode "ps=100" \
+    "https://sonarcloud.io/api/issues/search" 2>/dev/null || printf '{}')
 
-if echo "$SONAR_RAW" | jq -e 'has("issues")' >/dev/null 2>&1; then
-    SONAR_COUNT=$(echo "$SONAR_RAW" | jq '.issues | length')
+if printf '%s' "$SONAR_RAW" | jq -e 'has("issues")' >/dev/null 2>&1; then
+    SONAR_COUNT=$(printf '%s' "$SONAR_RAW" | jq '.issues | length')
     echo ""
     echo "════════════════ SONARCLOUD NEW ISSUES ($SONAR_COUNT) ════════════════"
     if [[ "$SONAR_COUNT" -gt 0 ]]; then
-        echo "$SONAR_RAW" | jq -r '
+        printf '%s' "$SONAR_RAW" | jq -r '
           .issues[] |
           "──────────────────────────────────────────────────",
           "[\(.severity)] [\(.rule)] \(.component | sub("^[^:]+:"; "")):\(.line // "?")",
@@ -124,5 +136,5 @@ if echo "$SONAR_RAW" | jq -e 'has("issues")' >/dev/null 2>&1; then
 else
     echo ""
     echo "════════════════ SONARCLOUD NEW ISSUES ════════════════"
-    echo "(project key '${SONAR_KEY}' not registered on sonarcloud.io — section skipped)"
+    echo "(project key '${SONAR_KEY}' not registered on sonarcloud.io or query failed — section skipped)"
 fi

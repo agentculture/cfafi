@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Create a PR, wait for automated reviewers (qodo, copilot, sonarcloud) to
 # post comments, then dump the feedback. Wraps the manual `gh pr create →

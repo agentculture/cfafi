@@ -10,6 +10,7 @@
 # Exits 0 if clean, 1 if any leak is found.
 
 set -euo pipefail
+shopt -s inherit_errexit
 
 mode="${1:-diff}"
 case "$mode" in
@@ -29,13 +30,10 @@ hits1=$(echo "$files" | xargs -r grep -nE '/home/[a-z][a-z0-9_-]+/' 2>/dev/null 
 #   - ~/.claude/projects/             Claude Code per-project memory (documented harness path)
 #   - ~/.culture/                     Culture mesh data this skill is supposed to read
 #   - ~/.config/                      XDG standard user-config base dir
-md_yaml=$(echo "$files" | grep -E '\.(md|ya?ml|toml|json|jsonc)$' || true)
-# Tildes in the patterns below are intentional literals (we're matching
-# the textual `~/...` token in committed docs); shellcheck's SC2088 warning
-# about tilde-in-quotes does not apply here.
-# shellcheck disable=SC2088
+md_yaml=$(printf '%s' "$files" | grep -E '\.(md|ya?ml|toml|json|jsonc)$' || true)
 if [ -n "$md_yaml" ]; then
-    hits2=$(echo "$md_yaml" | xargs -r grep -nE '~/\.[A-Za-z]' 2>/dev/null \
+    # shellcheck disable=SC2088 # tildes are intentional literals matching ~/... in committed docs
+    hits2=$(printf '%s' "$md_yaml" | xargs -r grep -nE '~/\.[A-Za-z]' 2>/dev/null \
         | grep -vE '~/\.claude/skills/[^[:space:]"]+/scripts/' \
         | grep -vE '~/\.claude/projects/' \
         | grep -vE '~/\.culture/' \

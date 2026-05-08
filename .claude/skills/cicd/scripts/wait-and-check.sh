@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Wait another N seconds (default 180 = 3 min) and re-check PR feedback.
 #
@@ -40,6 +41,8 @@ while [[ $# -gt 0 ]]; do
         --wait)     require_value "$@"; WAIT_SECS="$2"; shift 2 ;;
         --repo)     require_value "$@"; REPO="$2"; shift 2 ;;
         -h|--help)  usage ;;
+        --) shift; break ;;
+        -*) echo "Unknown flag: $1" >&2; usage ;;
         *) PR_NUM="$1"; shift ;;
     esac
 done

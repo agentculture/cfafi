@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Send a message to a Culture mesh channel.
 # Thin wrapper around `culture channel message <target> <text>`.

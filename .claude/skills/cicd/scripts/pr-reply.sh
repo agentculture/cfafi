@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Reply to a PR review comment, optionally resolve its thread.
 # Usage: pr-reply.sh [--repo OWNER/REPO] [--resolve] PR_NUMBER COMMENT_ID "body"
@@ -20,6 +21,13 @@ done
 PR_NUMBER="${1:?Usage: pr-reply.sh [--repo OWNER/REPO] [--resolve] [--print-body] PR_NUMBER COMMENT_ID \"body\"}"
 COMMENT_ID="${2:?Missing COMMENT_ID}"
 BODY="${3:?Missing reply body}"
+
+# PR_NUMBER and COMMENT_ID are interpolated into REST paths, GraphQL query
+# strings, and a jq filter expression. Reject anything that isn't a positive
+# integer to keep failures clear and prevent jq parsing surprises. The check
+# applies even in --print-body mode for consistency (and the cost is ~1 µs).
+[[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || { echo "ERROR: PR_NUMBER must be a positive integer, got: $PR_NUMBER" >&2; exit 2; }
+[[ "$COMMENT_ID" =~ ^[0-9]+$ ]] || { echo "ERROR: COMMENT_ID must be a positive integer, got: $COMMENT_ID" >&2; exit 2; }
 
 if [[ "$PRINT_BODY" != true && -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
