@@ -166,8 +166,9 @@ from cultureflare._secrets._shushu_sink import probe  # noqa: E402
 
 
 def test_probe_returns_metadata_dict_when_present(monkeypatch):
-    payload = {"name": "MY_SECRET", "hidden": True,
-               "source": "cultureflare/remote-login"}
+    # shushu show --json emits a flat object: {"ok": true, "name": ..., ...}
+    raw = {"ok": True, "name": "MY_SECRET", "hidden": True,
+           "source": "cultureflare/remote-login"}
 
     class _Run:
         def __call__(self, argv, **kwargs):
@@ -175,13 +176,14 @@ def test_probe_returns_metadata_dict_when_present(monkeypatch):
             assert "--json" in argv
             return subprocess.CompletedProcess(
                 args=argv, returncode=0,
-                stdout=json.dumps({"ok": True, "result": payload}).encode(),
+                stdout=json.dumps(raw).encode(),
                 stderr=b"",
             )
 
     monkeypatch.setattr(subprocess, "run", _Run())
     out = probe(ShushuTarget(user=None, name="MY_SECRET"))
-    assert out == payload
+    expected = {k: v for k, v in raw.items() if k != "ok"}
+    assert out == expected
 
 
 def test_probe_returns_none_when_record_absent(monkeypatch):
@@ -208,7 +210,7 @@ def test_probe_uses_sudo_for_cross_user(monkeypatch):
             captured.append(argv)
             return subprocess.CompletedProcess(
                 args=argv, returncode=0,
-                stdout=b'{"ok": true, "result": {"name": "X"}}',
+                stdout=b'{"ok": true, "name": "X"}',
                 stderr=b"",
             )
 

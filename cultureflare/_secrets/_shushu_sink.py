@@ -153,7 +153,10 @@ def probe(target: ShushuTarget) -> dict | None:
     payload = _json.loads(result.stdout.decode("utf-8"))
     if not payload.get("ok"):
         return None
-    return payload.get("result")
+    # shushu show --json returns the metadata directly in the top-level object
+    # (e.g. {"ok": true, "name": "...", "hidden": true, ...}).
+    # Strip the "ok" sentinel and return the rest as the metadata dict.
+    return {k: v for k, v in payload.items() if k != "ok"}
 
 
 def delete(target: ShushuTarget) -> bool:
