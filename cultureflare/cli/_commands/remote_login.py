@@ -8,6 +8,7 @@ from cultureflare._env import require_env
 from cultureflare._remote_login import setup, show, teardown
 from cultureflare._remote_login._common import Context, derive_names, resolve_zone
 from cultureflare._remote_login._preflight import check_token_alive
+from cultureflare._remote_login._seal_plan import derive_seal_plan
 from cultureflare._remote_login._render import (
     render_setup_dryrun_markdown, render_setup_json, render_setup_markdown,
     render_show_json, render_show_markdown,
@@ -53,6 +54,8 @@ def cmd_setup(args: argparse.Namespace) -> None:
     check_token_alive()
     ctx = _ctx_with_overrides(args)
 
+    seal = derive_seal_plan(hostname=args.hostname, shushu_arg=args.shushu)
+
     if not args.apply:
         if json_mode:
             emit_json({
@@ -89,6 +92,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
         domains=list(args.allow_domain),
         with_service_token=args.with_service_token,
         session_duration=args.session_duration,
+        seal=seal,
     )
     if json_mode:
         emit_json(render_setup_json(result, hostname=args.hostname))
@@ -103,7 +107,8 @@ def cmd_show(args: argparse.Namespace) -> None:
     json_mode = bool(args.json)
     check_token_alive()
     ctx = _ctx_with_overrides(args)
-    result = show(ctx=ctx)
+    seal = derive_seal_plan(hostname=args.hostname, shushu_arg=args.shushu)
+    result = show(ctx=ctx, seal=seal)
     if json_mode:
         emit_json(render_show_json(result, hostname=args.hostname))
     else:
@@ -117,6 +122,7 @@ def cmd_teardown(args: argparse.Namespace) -> None:
     json_mode = bool(args.json)
     check_token_alive()
     ctx = _ctx_with_overrides(args)
+    seal = derive_seal_plan(hostname=args.hostname, shushu_arg=args.shushu)
 
     if not args.apply:
         msg = (
@@ -138,7 +144,7 @@ def cmd_teardown(args: argparse.Namespace) -> None:
             emit_result(msg, json_mode=False)
         return
 
-    result = teardown(ctx=ctx, keep_tunnel=args.keep_tunnel)
+    result = teardown(ctx=ctx, keep_tunnel=args.keep_tunnel, seal=seal)
     if json_mode:
         emit_json(render_teardown_json(result, hostname=args.hostname))
     else:
@@ -179,6 +185,17 @@ def register(sub: argparse._SubParsersAction) -> None:
                    help="Actually mutate (default: dry-run).")
     s.add_argument("--json", action="store_true",
                    help="Emit JSON envelope on stdout.")
+    s.add_argument(
+        "--shushu",
+        nargs="?", const="", default=None, metavar="USER",
+        help=(
+            "seal tunnel_token + service_token client_secret into shushu "
+            "instead of printing them. Bare --shushu = invoking user; "
+            "--shushu=USER deposits into another user's vault via sudo. "
+            "When set, value fields render as <sealed: shushu/USER/NAME> "
+            "markers."
+        ),
+    )
     s.set_defaults(func=cmd_setup)
 
     sh = verbs.add_parser("show", help="Inspect the current state for a hostname.")
@@ -187,6 +204,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     sh.add_argument("--app-name", default=None)
     sh.add_argument("--service-token-name", default=None)
     sh.add_argument("--json", action="store_true")
+    sh.add_argument(
+        "--shushu",
+        nargs="?", const="", default=None, metavar="USER",
+        help=(
+            "seal tunnel_token + service_token client_secret into shushu "
+            "instead of printing them. Bare --shushu = invoking user; "
+            "--shushu=USER deposits into another user's vault via sudo. "
+            "When set, value fields render as <sealed: shushu/USER/NAME> "
+            "markers."
+        ),
+    )
     sh.set_defaults(func=cmd_show)
 
     t = verbs.add_parser("teardown", help="Delete in reverse-dependency order.")
@@ -199,4 +227,15 @@ def register(sub: argparse._SubParsersAction) -> None:
     t.add_argument("--apply", action="store_true",
                    help="Actually mutate (default: dry-run).")
     t.add_argument("--json", action="store_true")
+    t.add_argument(
+        "--shushu",
+        nargs="?", const="", default=None, metavar="USER",
+        help=(
+            "seal tunnel_token + service_token client_secret into shushu "
+            "instead of printing them. Bare --shushu = invoking user; "
+            "--shushu=USER deposits into another user's vault via sudo. "
+            "When set, value fields render as <sealed: shushu/USER/NAME> "
+            "markers."
+        ),
+    )
     t.set_defaults(func=cmd_teardown)

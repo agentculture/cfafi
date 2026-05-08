@@ -2,7 +2,15 @@
 
 import json
 
+import pytest
+
 from cultureflare.cli import main
+
+
+@pytest.fixture
+def remote_login_parser():
+    from cultureflare.cli import _build_parser
+    return _build_parser()
 
 
 def _zones_one(name="culture.dev", zid="zid-1"):
@@ -108,3 +116,40 @@ def test_teardown_dry_run_does_not_delete(http_stub, capsys):
     assert "Dry-run" in out
     deletes = [c for c in http_stub.calls if c[0] == "DELETE"]
     assert deletes == []
+
+
+def test_setup_argparse_accepts_no_shushu_flag(remote_login_parser):
+    args = remote_login_parser.parse_args([
+        "remote-login", "setup", "--hostname", "app.example.com", "--allow", "x@y",
+    ])
+    assert args.shushu is None
+
+
+def test_setup_argparse_bare_shushu_yields_empty_string(remote_login_parser):
+    args = remote_login_parser.parse_args([
+        "remote-login", "setup", "--hostname", "app.example.com",
+        "--allow", "x@y", "--shushu",
+    ])
+    assert args.shushu == ""
+
+
+def test_setup_argparse_shushu_with_user(remote_login_parser):
+    args = remote_login_parser.parse_args([
+        "remote-login", "setup", "--hostname", "app.example.com",
+        "--allow", "x@y", "--shushu=alice",
+    ])
+    assert args.shushu == "alice"
+
+
+def test_show_argparse_accepts_shushu(remote_login_parser):
+    args = remote_login_parser.parse_args([
+        "remote-login", "show", "--hostname", "app.example.com", "--shushu=alice",
+    ])
+    assert args.shushu == "alice"
+
+
+def test_teardown_argparse_accepts_shushu(remote_login_parser):
+    args = remote_login_parser.parse_args([
+        "remote-login", "teardown", "--hostname", "app.example.com", "--shushu",
+    ])
+    assert args.shushu == ""
