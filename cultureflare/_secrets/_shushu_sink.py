@@ -19,6 +19,7 @@ CfafiError:
 
 from __future__ import annotations
 
+import json as _json
 import subprocess
 
 from cultureflare._secrets._types import SealMetadata, ShushuTarget
@@ -101,3 +102,42 @@ def seal(
 
     if result.returncode != 0:
         raise _map_exit_code(result.returncode, result.stderr, target)
+
+
+def _argv_for_show(target: ShushuTarget) -> list[str]:
+    argv: list[str] = []
+    if target.user is not None:
+        argv.append("sudo")
+    argv.extend(["shushu", "show", "--json"])
+    if target.user is not None:
+        argv.extend(["--user", target.user])
+    argv.append(target.name)
+    return argv
+
+
+def probe(target: ShushuTarget) -> dict | None:
+    """Return shushu's metadata dict for ``target.name``, or None when absent.
+
+    Hidden entries return metadata with no ``value`` field, which is
+    fine — cultureflare only cares about presence + provenance.
+    Cross-user goes through sudo. Any non-64 non-zero exit is raised.
+    """
+    argv = _argv_for_show(target)
+    try:
+        result = subprocess.run(argv, capture_output=True, check=False)
+    except FileNotFoundError as exc:
+        raise CfafiError(
+            code=EXIT_USER_ERROR,
+            message="shushu binary not found",
+            remediation="`uv tool install shushu`",
+        ) from exc
+
+    if result.returncode == 64:
+        return None
+    if result.returncode != 0:
+        raise _map_exit_code(result.returncode, result.stderr, target)
+
+    payload = _json.loads(result.stdout.decode("utf-8"))
+    if not payload.get("ok"):
+        return None
+    return payload.get("result")
