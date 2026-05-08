@@ -350,6 +350,24 @@ def test_show_markdown_flags_missing_tunnel_ingress():
     assert "503" in md  # remediation hint in the (no rules) message
 
 
+def test_show_markdown_treats_none_config_as_no_rules():
+    """get_tunnel_config returns None when no config is set yet — same gap."""
+    show = ShowResult(
+        team_domain="ac.cloudflareaccess.com",
+        tunnel={"id": "tun-1", "name": "irc-culture-dev"},
+        tunnel_config=None,
+        dns=None, access_app=None, policy=None,
+        service_token=None, service_token_policy=None,
+    )
+    md = render_show_markdown(show, hostname="irc.culture.dev")
+    assert "**tunnel-ingress:** (no rules — cloudflared will 503)" in md
+    # The misleading "(not found)" must NOT appear on the ingress line.
+    ingress_line = next(
+        line for line in md.splitlines() if "tunnel-ingress" in line
+    )
+    assert "(not found)" not in ingress_line
+
+
 def test_show_markdown_renders_tunnel_ingress_when_present():
     show = ShowResult(
         team_domain="ac.cloudflareaccess.com",

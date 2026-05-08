@@ -157,6 +157,40 @@ def test_ensure_tunnel_config_overwrites_stale_ingress(http_stub):
     assert changed is True
 
 
+def test_ensure_tunnel_config_preserves_other_config_keys(http_stub):
+    """Don't clobber operator-set warp-routing / originRequest etc.
+
+    The PUT endpoint is replace-not-merge — omitting a key resets it.
+    Bug #28 follow-up from qodo review on PR #30.
+    """
+    http_stub.set("GET", _TUNNEL_CFG_PATH, {
+        "success": True, "errors": [], "messages": [],
+        "result": {
+            "version": 7,
+            "config": {
+                "ingress": [{"service": "http_status:404"}],
+                "warp-routing": {"enabled": True},
+                "originRequest": {"connectTimeout": 30},
+            },
+        },
+    })
+    http_stub.set("PUT", _TUNNEL_CFG_PATH, _config_envelope([]))
+    ensure_tunnel_config(
+        account_id="acc-1", tunnel_id="tun-b",
+        hostname="x.example.com", service="http://localhost:8080",
+    )
+    puts = [c for c in http_stub.calls if c[0] == "PUT"]
+    payload = puts[0][2]
+    cfg = payload["config"]
+    # New ingress applied
+    assert cfg["ingress"][0] == {
+        "hostname": "x.example.com", "service": "http://localhost:8080",
+    }
+    # Other keys preserved verbatim
+    assert cfg["warp-routing"] == {"enabled": True}
+    assert cfg["originRequest"] == {"connectTimeout": 30}
+
+
 def test_ensure_tunnel_config_overwrites_when_hostname_mismatch(http_stub):
     http_stub.set("GET", _TUNNEL_CFG_PATH, _config_envelope([
         {"hostname": "old.example.com", "service": "http://localhost:8080"},

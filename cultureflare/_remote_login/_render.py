@@ -165,11 +165,12 @@ def _row_tunnel(tunnel: dict | None) -> str:
 def _row_tunnel_config(config: dict | None) -> str:
     """Render the first ingress rule (the public-hostname route).
 
-    Empty/missing ingress is the gap from #28 — surface it explicitly.
+    Both ``config is None`` (no configuration object set yet) and an
+    explicit empty ``ingress`` list are the same operational gap from
+    #28: cloudflared registers connections then 503s every request.
+    Surface them with the same hint.
     """
-    if config is None:
-        return "- **tunnel-ingress:** (not found)"
-    rules = (config.get("config") or {}).get("ingress") or []
+    rules = ((config or {}).get("config") or {}).get("ingress") or []
     if not rules:
         return "- **tunnel-ingress:** (no rules — cloudflared will 503)"
     head = rules[0]

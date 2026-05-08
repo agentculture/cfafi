@@ -76,22 +76,31 @@ def ensure_tunnel_config(
     """Set ingress for a remote-managed tunnel; idempotent.
 
     Returns True if a PUT was made, False if existing config already
-    matches `(hostname → service)` + the `http_status:404` catch-all.
+    matches ``(hostname → service)`` + the ``http_status:404`` catch-all.
+
+    The PUT preserves any other writable keys already present on the
+    tunnel's ``config`` object (e.g. ``warp-routing``, ``originRequest``)
+    by overlaying the new ``ingress`` rules on top of the existing
+    config rather than sending a fresh one. CF's `/configurations`
+    endpoint is replace-not-merge, so omitting a key resets it to
+    its default — which would silently drop operator-set
+    ``warp-routing`` toggles or origin TLS / connectTimeout overrides.
     """
     existing = get_tunnel_config(account_id=account_id, tunnel_id=tunnel_id)
     if _ingress_matches(existing, hostname=hostname, service=service):
         return False
+    existing_config = (existing or {}).get("config") or {}
+    new_config = {
+        **existing_config,
+        "ingress": [
+            {"hostname": hostname, "service": service},
+            {"service": "http_status:404"},
+        ],
+    }
     _api.http_request(
         "PUT",
         f"/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations",
-        payload={
-            "config": {
-                "ingress": [
-                    {"hostname": hostname, "service": service},
-                    {"service": "http_status:404"},
-                ],
-            },
-        },
+        payload={"config": new_config},
     )
     return True
 

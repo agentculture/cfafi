@@ -20,11 +20,15 @@ from cultureflare.cli._output import emit_json, emit_result
 
 
 def _validate_service_url(value: str) -> str:
-    """Reject empty / scheme-less / host-less --service values.
+    """Reject empty / scheme-less / host-less ``--service`` values.
 
-    We don't try to be exhaustive (cloudflared accepts ``unix:`` and
-    ``tcp://`` too), just catch the common shape mistakes that would
-    POST garbage into CF and produce a 503 the operator has to hunt for.
+    Catches the common shape mistakes that would POST garbage into CF
+    and produce a 503 the operator has to hunt for. The check is
+    ``scheme://host[:port]`` — i.e. cloudflared targets that have a
+    netloc (``http://``, ``https://``, ``tcp://``). Schemes without
+    a netloc (``unix:/path``) aren't accepted here; if you need that
+    shape, set the tunnel ingress directly via the dashboard or API
+    and skip this CLI's ingress step.
     """
     parsed = urlparse(value)
     if not parsed.scheme or not parsed.netloc:
