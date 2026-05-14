@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Comment on an existing cross-repo issue. Thin wrapper around
 # `agtag issue reply` that mirrors `post-issue.sh`'s ergonomics.

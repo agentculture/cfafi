@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # Post a cross-repo issue. Thin wrapper around `agtag issue post` that
 # preserves this skill's stable script path so existing callers

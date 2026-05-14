@@ -58,7 +58,7 @@ schema. `agex pr delta` reads the same file.
 | `workflow.sh read [PR] [--wait N]` | `agex pr read`. One-shot briefing (CI checks, SonarCloud gate + new issues, all comments, next-step footer). Pass `--wait N` to poll up to N seconds for required reviewers. |
 | `workflow.sh reply <PR>` | `agex pr reply <PR>` — batch JSONL replies (stdin) + thread resolve. agex auto-signs the nick (see below). |
 | `workflow.sh delta` | `agex pr delta` — sibling alignment dump. |
-| `workflow.sh status <PR>` | **Steward extension.** `pr-status.sh` — Sonar gate, OPEN issues, hotspots, unresolved-thread breakdown, deploy preview URL. Authoritative gate for `await`. |
+| `workflow.sh status [--repo R] [--sonar-key K] <PR>` | **Steward extension.** Forwards all args to `pr-status.sh` — Sonar gate, OPEN issues, hotspots, unresolved-thread breakdown, deploy preview URL. Authoritative gate for `await`. |
 | `workflow.sh await <PR>` | **Steward extension.** `agex pr read --wait` then `status`. Exits non-zero on Sonar ERROR or unresolved threads. Tunables: `CULTUREFLARE_PR_AWAIT_WAIT` (default 1800s, passed to `--wait`), `CULTUREFLARE_PR_AWAIT_SECONDS` (legacy fixed pre-sleep, deprecated). |
 | `workflow.sh help` | Print the list. |
 
@@ -73,14 +73,18 @@ anymore. `portability-lint.sh` is also still shipped — `agex pr lint`
 runs the same rules, but the standalone script stays for direct
 diff-time checks.
 
-> **Local divergence:** cultureflare's `pr-status.sh`,
-> `portability-lint.sh`, `pr-reply.sh`, and `_resolve-nick.sh` carry
-> repo-local hardening on top of the steward originals — shellcheck
-> cleanliness (`printf '%s'` over `echo`, `shopt -s inherit_errexit`),
-> a timeout/retry/URL-encoding `sonar_curl` helper, integer validation
-> of PR / comment IDs, and extra portability carve-outs. These are
-> intentional improvements kept across re-syncs; only `workflow.sh`
-> tracks the upstream agex-delegation rewrite verbatim.
+> **Local divergence:** every script in this skill carries repo-local
+> hardening on top of the steward originals — shellcheck cleanliness
+> (`printf '%s'` over `echo`, `[[ … ]]` over `[ … ]`,
+> `shopt -s inherit_errexit`), a timeout/retry/URL-encoding `sonar_curl`
+> helper in `pr-status.sh`, integer validation of PR / comment IDs in
+> `pr-reply.sh`, and extra portability carve-outs in
+> `portability-lint.sh`. `workflow.sh` follows the upstream
+> agex-delegation structure but adds two cultureflare specifics: it
+> defaults+exports `SONAR_PROJECT_KEY=agentculture_cloudflare` (see the
+> SonarCloud note below) and forwards all `status` args to
+> `pr-status.sh`. These are intentional improvements kept across
+> re-syncs.
 
 ## Polling for reviewer readiness
 
@@ -174,14 +178,16 @@ includes thread-resolve by default. Reference the review-comment IDs
 in the fix-up commit message.
 
 SonarCloud is queried by the `status` extension (`pr-status.sh` —
-quality gate, OPEN issues, hotspots) and by `agex pr read`. Both
-derive the project key as `<owner>_<repo>` by default — but
+quality gate, OPEN issues, hotspots) and by `agex pr read`. The
+default project-key derivation is `<owner>_<repo>` — but
 cultureflare's **registered SonarCloud project is
 `agentculture_cloudflare`** (it predates the cultureflare rename), not
-the derived `agentculture_cultureflare`. Export
-`SONAR_PROJECT_KEY=agentculture_cloudflare` (or pass `--sonar-key`)
-when invoking `pr-status.sh` / `workflow.sh status` so SonarCloud
-findings actually surface.
+the derived `agentculture_cultureflare`. `workflow.sh` defaults and
+exports `SONAR_PROJECT_KEY=agentculture_cloudflare`, so `workflow.sh
+status` / `workflow.sh await` already target the right project. Only
+when calling `pr-status.sh` **directly** (not through `workflow.sh`)
+do you need to export `SONAR_PROJECT_KEY=agentculture_cloudflare` or
+pass `--sonar-key` yourself.
 
 The post-merge IRC ping is gated on cultureflare joining the Culture
 mesh — see CLAUDE.md → Hard constraints; until that lands, the

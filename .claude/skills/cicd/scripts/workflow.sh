@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 # cultureflare cicd workflow — thin layer over `agex pr` plus two
 # steward extensions (`status`, `await`) for SonarCloud gating and
@@ -22,9 +23,10 @@ set -euo pipefail
 #                          shape as the old pr-batch.sh.
 #   delta                  `agex pr delta`. Sibling alignment dump.
 #
-#   status <PR>            Steward extension: pr-status.sh — SonarCloud
+#   status [flags] <PR>    Steward extension: pr-status.sh — SonarCloud
 #                          gate, OPEN issues, hotspots, unresolved
 #                          inline-thread tally, deploy-preview URL.
+#                          Forwards [--repo OWNER/REPO] [--sonar-key KEY].
 #                          Source of truth for the `await` gate.
 #   await  <PR>            Steward extension: `read --wait` for the
 #                          briefing, then `status` for the gate. Exits
@@ -38,6 +40,13 @@ set -euo pipefail
 #   help                   print this message
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# cultureflare's registered SonarCloud project is `agentculture_cloudflare`
+# (predates the rename), not the `<owner>_<repo>` default pr-status.sh would
+# derive. Default + export it so the `status` and `await` invocations below
+# always target the right project; an explicit env value or `--sonar-key`
+# flag still wins.
+export SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY:-agentculture_cloudflare}"
 
 # agex's `--agent` flag accepts only claude-code|codex|copilot|acp. The
 # workspace culture.yaml convention is `backend: claude`, so we always
@@ -79,8 +88,10 @@ case "$cmd" in
         exec agex pr delta --agent "$AGEX_AGENT" "$@"
         ;;
     status)
-        PR="${1:?Usage: workflow.sh status <PR>}"
-        exec bash "$SCRIPT_DIR/pr-status.sh" "$PR"
+        # Forward every arg to pr-status.sh so its full CLI works through
+        # workflow.sh — `status [--repo OWNER/REPO] [--sonar-key KEY] <PR>`.
+        # pr-status.sh validates the PR_NUMBER positional itself.
+        exec bash "$SCRIPT_DIR/pr-status.sh" "$@"
         ;;
     await)
         require_agex
@@ -148,7 +159,7 @@ case "$cmd" in
         echo "✓ no SonarCloud ERROR, no unresolved threads" >&2
         ;;
     help|--help|-h)
-        sed -n '4,38p' "${BASH_SOURCE[0]}" | sed 's/^# *//'
+        sed -n '5,40p' "${BASH_SOURCE[0]}" | sed 's/^# *//'
         ;;
     *)
         echo "unknown subcommand: $cmd" >&2
