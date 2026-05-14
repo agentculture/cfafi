@@ -18,7 +18,8 @@ readonly USAGE="Usage: fetch-issues.sh [RANGE|NUMBER...] [--repo OWNER/REPO]"
 
 # Print an optional error line + the usage string to stderr, then exit 2.
 usage_error() {
-  [[ -n "${1:-}" ]] && echo "Error: $1" >&2
+  local msg="${1:-}"
+  [[ -n "$msg" ]] && echo "Error: $msg" >&2
   echo "$USAGE" >&2
   exit 2
 }
