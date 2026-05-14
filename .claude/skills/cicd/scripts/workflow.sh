@@ -87,7 +87,7 @@ case "$cmd" in
         PR="${1:?Usage: workflow.sh await <PR>}"
 
         # Legacy fixed-sleep escape hatch.
-        if [ -n "${CULTUREFLARE_PR_AWAIT_SECONDS:-}" ]; then
+        if [[ -n "${CULTUREFLARE_PR_AWAIT_SECONDS:-}" ]]; then
             echo "warning: CULTUREFLARE_PR_AWAIT_SECONDS is deprecated; prefer CULTUREFLARE_PR_AWAIT_WAIT." >&2
             echo "→ sleeping ${CULTUREFLARE_PR_AWAIT_SECONDS}s (legacy fixed-sleep) before agex pr read …" >&2
             sleep "$CULTUREFLARE_PR_AWAIT_SECONDS"
@@ -107,7 +107,7 @@ case "$cmd" in
         else
             READ_RC=$?
         fi
-        if [ "$READ_RC" -ne 0 ]; then
+        if [[ "$READ_RC" -ne 0 ]]; then
             echo "✗ agex pr read failed (exit $READ_RC)" >&2
             exit "$READ_RC"
         fi
@@ -121,7 +121,7 @@ case "$cmd" in
             STATUS_RC=$?
         fi
         printf '%s\n' "$STATUS_OUT"
-        if [ "$STATUS_RC" -ne 0 ]; then
+        if [[ "$STATUS_RC" -ne 0 ]]; then
             echo >&2
             echo "✗ pr-status.sh failed (exit $STATUS_RC) — cannot determine PR state" >&2
             exit "$STATUS_RC"
@@ -136,12 +136,12 @@ case "$cmd" in
             SONAR_FAIL=1
         fi
         if PENDING=$(printf '%s\n' "$STATUS_OUT" | grep -oE 'Unresolved:[[:space:]]+[0-9]+' | grep -oE '[0-9]+$' | head -1); then
-            [ -n "${PENDING:-}" ] && [ "$PENDING" -gt 0 ] && UNRESOLVED=1
+            [[ -n "${PENDING:-}" ]] && [[ "$PENDING" -gt 0 ]] && UNRESOLVED=1
         fi
-        if [ "$SONAR_FAIL" -eq 1 ] || [ "$UNRESOLVED" -eq 1 ]; then
+        if [[ "$SONAR_FAIL" -eq 1 ]] || [[ "$UNRESOLVED" -eq 1 ]]; then
             echo >&2
-            [ "$SONAR_FAIL" -eq 1 ] && echo "✗ SonarCloud quality gate ERROR" >&2
-            [ "$UNRESOLVED" -eq 1 ] && echo "✗ ${PENDING} unresolved review thread(s)" >&2
+            [[ "$SONAR_FAIL" -eq 1 ]] && echo "✗ SonarCloud quality gate ERROR" >&2
+            [[ "$UNRESOLVED" -eq 1 ]] && echo "✗ ${PENDING} unresolved review thread(s)" >&2
             exit 1
         fi
         echo >&2

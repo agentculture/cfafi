@@ -1,0 +1,3 @@
+{"ts":"2026-05-14T21:05:24.580293+00:00","type":"readiness_arrived","pr":35,"waited_secs":0}
+{"ts":"2026-05-14T21:05:28.073939+00:00","type":"pr_read","pr":35,"comment_count":2,"threads_unresolved":0,"ci_state":"ok"}
+{"ts":"2026-05-14T21:05:59.228277+00:00","type":"pr_read","pr":35,"comment_count":3,"threads_unresolved":0,"ci_state":"ok"}
